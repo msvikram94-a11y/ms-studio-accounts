@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="MS Studio Accounts — counter daily accounts" />
+<title>MS Studio Accounts</title>
+<style>
+  :root{
+    --ink:#171a21; --ink-2:#2a2f3a; --bg:#eef0f5; --card:#ffffff;
+    --line:#e4e7ee; --muted:#6a7183; --amber:#e79a26; --amber-d:#bd7c14;
+    --green:#12946a; --green-bg:#e7f6ef; --red:#d15546; --red-bg:#fbecea;
+    --blue:#3a6ea5; --shadow:0 1px 2px rgba(16,20,30,.04),0 8px 24px rgba(16,20,30,.06);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.4;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+  button{font-family:inherit;cursor:pointer} input,select{font-family:inherit;font-size:15px}
+  .hide{display:none !important}
+  .num{font-variant-numeric:tabular-nums}
+  /* no up/down steppers on number boxes — type the value */
+  input[type=number]{-moz-appearance:textfield;appearance:textfield}
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+
+  /* login */
+  #login{min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(1200px 600px at 50% -10%,#232838,#171a21 55%,#12141b)}
+  .login-card{width:100%;max-width:370px;background:#fff;border-radius:18px;padding:32px 28px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+  .brand{display:flex;align-items:center;gap:11px}
+  .brand h1{font-size:17px;margin:0;letter-spacing:-.2px}.brand p{margin:1px 0 0;font-size:12px;color:var(--muted)}
+  .field{margin:18px 0 0}.field:first-of-type{margin-top:22px}
+  .field label{display:block;font-size:12px;font-weight:700;color:var(--ink-2);margin-bottom:6px}
+  .field input{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fbfcfe}
+  .field input:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px rgba(231,154,38,.15);background:#fff}
+  .btn{border:none;border-radius:10px;padding:12px 16px;font-weight:700;font-size:15px;transition:.15s}
+  .btn-primary{background:var(--amber);color:#231803;width:100%;margin-top:20px}.btn-primary:hover{background:var(--amber-d);color:#fff}
+  .err{color:var(--red);font-size:13px;margin-top:10px;min-height:16px}
+
+  /* shell */
+  #app{max-width:900px;margin:0 auto;padding:0 14px 70px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 2px;position:sticky;top:0;background:var(--bg);z-index:20}
+  .loc-tag{font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--amber-d);background:#fff6e8;border:1px solid #f1dcae;padding:2px 8px;border-radius:20px;text-transform:uppercase}
+  .who{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted)}.who b{color:var(--ink)}
+  .btn-ghost{background:#fff;border:1px solid var(--line);color:var(--ink-2);border-radius:9px;padding:8px 12px;font-size:13px;font-weight:600}.btn-ghost:hover{border-color:#cfd4de}
+  .tabs{display:flex;gap:4px;background:#e2e6ee;padding:4px;border-radius:12px;margin-bottom:16px}
+  .tabs button{flex:1;border:none;background:transparent;padding:10px;border-radius:9px;font-weight:700;font-size:14px;color:var(--muted)}
+  .tabs button.active{background:#fff;color:var(--ink);box-shadow:var(--shadow)}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px;margin-bottom:14px}
+  .card h2{font-size:14px;margin:0 0 12px;letter-spacing:.2px;text-transform:uppercase;color:var(--ink-2)}
+  .card h2 .sub{font-weight:500;color:var(--muted);font-size:12px;text-transform:none;letter-spacing:0}
+  .row{display:flex;gap:10px;flex-wrap:wrap}.col{flex:1;min-width:120px}
+  label.lbl{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px}
+  .inp{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;background:#fbfcfe}
+  .inp:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px rgba(231,154,38,.14);background:#fff}
+
+  table{width:100%;border-collapse:collapse}
+  .tbl th{font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);font-weight:800;padding:0 4px 7px;text-align:center}
+  .tbl th.l{text-align:left} .tbl td{padding:3px;vertical-align:middle}
+  .tbl td.l{font-weight:600;font-size:13.5px}
+  .tbl input{width:100%;padding:8px 6px;border:1px solid var(--line);border-radius:8px;text-align:center;background:#fff}
+  .tbl input:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 2px rgba(231,154,38,.16)}
+  .tbl .rate{background:#fcfaf4}
+  .tbl .diff{font-weight:800;text-align:center}
+  .tbl .amt{font-weight:800;text-align:right;white-space:nowrap;padding-right:6px}
+  .seg{background:#f3f4f8;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:7px 8px;border-radius:7px;margin:4px 0}
+  .x{border:none;background:#f2f3f6;color:var(--muted);width:28px;height:28px;border-radius:7px;font-size:15px}.x:hover{background:var(--red-bg);color:var(--red)}
+  .addline{margin-top:8px;background:#fff;border:1px dashed #cfd5e0;color:var(--ink-2);border-radius:9px;padding:9px;font-weight:700;font-size:13px;width:100%}.addline:hover{border-color:var(--amber);color:var(--amber-d)}
+
+  .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .stat{background:linear-gradient(180deg,#fff,#fbfcfe);border:1px solid var(--line);border-radius:12px;padding:12px}
+  .stat .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:800}
+  .stat .v{font-size:19px;font-weight:800;margin-top:5px;letter-spacing:-.4px}
+  .stat.sales .v{color:var(--green)}.stat.exp .v{color:var(--red)}.stat.cash .v{color:var(--amber-d)}
+
+  .recon{display:flex;justify-content:space-between;align-items:center;padding:9px 2px;font-size:14px;border-bottom:1px solid #f1f3f7}
+  .recon:last-child{border:none}
+  .recon .big{font-weight:800;font-size:16px}
+  .diffbox{text-align:center;padding:11px;border-radius:10px;font-weight:800;margin-top:8px}
+  .diffbox.ok{background:var(--green-bg);color:var(--green)} .diffbox.bad{background:var(--red-bg);color:var(--red)}
+
+  .pair{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .pair input.name{flex:1} .pair input.val{width:120px;text-align:right}
+
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+  .btn-save{background:var(--amber);color:#231803}.btn-save:hover{background:var(--amber-d);color:#fff}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(18px);opacity:0;background:var(--ink);color:#fff;padding:12px 18px;border-radius:11px;font-weight:700;box-shadow:0 12px 30px rgba(0,0,0,.3);transition:.25s;z-index:60;pointer-events:none}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .hist-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--line);border-radius:11px;margin-bottom:8px}
+  .hist-item:hover{border-color:#cfd4de}.hist-date{font-weight:800}.hist-date small{display:block;color:var(--muted);font-weight:500;font-size:12px}
+  .hist-figs{display:flex;gap:16px;align-items:center;text-align:right}.hist-figs .fg{font-size:11px;color:var(--muted)}.hist-figs .fg b{display:block;font-size:14px;color:var(--ink)}
+  .empty{text-align:center;color:var(--muted);padding:30px 10px}.empty b{display:block;color:var(--ink-2);font-size:15px;margin-bottom:4px}
+  .hint{font-size:12px;color:var(--muted);margin:-4px 0 10px}
+  .carry{color:var(--blue);font-weight:700;font-size:11px}
+  .tbl td.n{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+  /* admin */
+  #admin{max-width:1000px;margin:0 auto;padding:0 14px 70px}
+  .ad-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+  .cc{border:1px solid var(--line);border-radius:12px;padding:14px;background:#fff}
+  .cc.best{border-color:var(--amber);box-shadow:0 0 0 2px rgba(231,154,38,.2)}
+  .cc.off{opacity:.5}
+  .cc .ccn{font-weight:800;font-size:15px;display:flex;justify-content:space-between;align-items:center;gap:6px}
+  .cc .badge{font-size:10px;font-weight:800;color:#231803;background:var(--amber);padding:2px 7px;border-radius:20px;text-transform:uppercase}
+  .cc .ccg{font-size:22px;font-weight:800;color:var(--green);margin:7px 0 3px}
+  .cc .ccm{font-size:12px;color:var(--muted);line-height:1.5}
+  .chartwrap{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+  .legend{display:flex;flex-direction:column;gap:7px;font-size:13px}
+  .legend .li{display:flex;align-items:center;gap:8px}
+  .legend .sw{width:12px;height:12px;border-radius:3px;flex:0 0 12px}
+  .bars{display:flex;flex-direction:column;gap:9px}
+  .barrow{display:flex;align-items:center;gap:10px;font-size:13px}
+  .blabel{width:130px;flex:0 0 130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+  .btrack{flex:1;height:15px;background:#eef0f5;border-radius:8px;overflow:hidden}
+  .bfill{display:block;height:100%;background:linear-gradient(90deg,#e79a26,#f0b24f);border-radius:8px}
+  .bval{width:92px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+  @media(max-width:620px){.summary{grid-template-columns:repeat(2,1fr)}.who .lbl2{display:none}}
+  @media print{.topbar,.tabs,.no-print,.addline,.x{display:none !important}body{background:#fff}.card{box-shadow:none;border:1px solid #ccc}}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<section id="login">
+  <div class="login-card">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="#171a21"/><g stroke="#e79a26" stroke-width="2.2" stroke-linecap="round" fill="none"><circle cx="22" cy="22" r="9.2"/><path d="M22 12.8 L27 21 M22 12.8 L17 21 M30 20 L21 21 M30 20 L26 28 M27 30.5 L23 23 M27 30.5 L18 29 M14 28.5 L23 23 M14 28.5 L18 20"/></g><circle cx="22" cy="22" r="3" fill="#e79a26"/></svg>
+      <div><h1>MS Studio Accounts</h1><p>Counter daily accounts</p></div>
+    </div>
+    <form id="loginForm" autocomplete="off">
+      <div class="field"><label>Username</label><input id="u" type="text" placeholder="Username"></div>
+      <div class="field"><label>Password</label><input id="p" type="password" placeholder="Password"></div>
+      <div class="err" id="loginErr"></div>
+      <button class="btn btn-primary" type="submit">Log in</button>
+    </form>
+  </div>
+</section>
+
+<!-- APP -->
+<main id="app" class="hide">
+  <div class="topbar">
+    <div class="brand" style="gap:9px">
+      <svg width="24" height="24" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="#171a21"/><g stroke="#e79a26" stroke-width="2.2" stroke-linecap="round" fill="none"><circle cx="22" cy="22" r="9.2"/><path d="M22 12.8 L27 21 M22 12.8 L17 21 M30 20 L21 21 M30 20 L26 28 M27 30.5 L23 23 M27 30.5 L18 29 M14 28.5 L23 23 M14 28.5 L18 20"/></g><circle cx="22" cy="22" r="3" fill="#e79a26"/></svg>
+      <h1 style="margin:0;font-size:15px">MS Studio <span class="loc-tag" id="locTag">—</span></h1>
+    </div>
+    <div class="who"><span class="lbl2">Counter:</span><b id="whoName">—</b><button class="btn-ghost" id="logoutBtn">Log out</button></div>
+  </div>
+
+  <div class="tabs">
+    <button data-tab="day" class="active">Day Sheet</button>
+    <button data-tab="history">History</button>
+    <button data-tab="report">Report</button>
+  </div>
+
+  <!-- DAY -->
+  <section id="tab-day">
+
+    <!-- GATE: new stock (done at start of day, before selling) -->
+    <div id="dayGate" class="hide">
+      <div class="card">
+        <h2>Start the day — new stock</h2>
+        <p class="hint">Yesterday's closing is carried as today's <b>opening</b>. Add any <b>new stock</b> that arrived today. When you open the day, the opening is locked — the team can then enter only the closing count.</p>
+        <div class="row" style="margin-bottom:10px">
+          <div class="col" style="max-width:220px"><label class="lbl">Date</label><input class="inp" type="date" id="gateDate"></div>
+        </div>
+        <table class="tbl"><thead><tr>
+          <th class="l">Item</th><th>Price ₹</th><th>Carried</th><th>+ New stock</th><th>Opening</th>
+        </tr></thead><tbody id="gateBody"></tbody></table>
+        <button class="addline" id="addItem">+ Add new item</button>
+        <div class="actions" style="margin-top:16px">
+          <button class="btn btn-save" id="openDay">Open day &amp; lock opening</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SHEET: team enters closing -->
+    <div id="daySheet" class="hide">
+      <div class="card">
+        <h2>Day details</h2>
+        <div class="row">
+          <div class="col"><label class="lbl">Date</label><input class="inp" type="date" id="entryDate"></div>
+          <div class="col"><label class="lbl">Opening balance (₹)</label><input class="inp num" type="number" id="opening" placeholder="0"></div>
+          <div class="col"><label class="lbl">Sign / by</label><input class="inp" id="sign" placeholder="Name"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Photo prints <span class="sub">— enter print count from printer</span></h2>
+        <table class="tbl"><thead><tr><th class="l">Size</th><th>Price ₹</th><th>Print count</th><th style="text-align:right">Amount</th></tr></thead>
+          <tbody id="photoBody"></tbody></table>
+      </div>
+
+      <div class="card">
+        <h2>Stock — enter closing <span class="sub">— Sold = Opening − Close − Waste</span></h2>
+        <p class="hint">Opening is <b>locked</b> for the day. Enter today's <b>Close</b> and any <b>Waste</b>; sold &amp; amount fill in automatically.</p>
+        <table class="tbl"><thead><tr>
+          <th class="l">Item</th><th>Price ₹</th><th>Opening 🔒</th><th>Close</th><th>Waste</th><th>Sold</th><th style="text-align:right">Amount</th>
+        </tr></thead><tbody id="stockBody"></tbody></table>
+        <button class="addline" id="addStockOwner">+ Add / edit stock (owner)</button>
+      </div>
+
+      <div class="card">
+        <h2>Day totals</h2>
+        <div class="summary" id="summary"></div>
+      </div>
+
+      <div class="card">
+        <h2>Collection &amp; expenses</h2>
+        <div class="row">
+          <div class="col"><label class="lbl">Cash (₹)</label><input class="inp num" type="number" id="cash" placeholder="0"></div>
+          <div class="col"><label class="lbl">GPay (₹)</label><input class="inp num" type="number" id="gpay" placeholder="0"></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div class="col"><label class="lbl">Tea (₹)</label><input class="inp num" type="number" id="tea" placeholder="0"></div>
+          <div class="col"><label class="lbl">Less (₹)</label><input class="inp num" type="number" id="less" placeholder="0"></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div class="col" style="max-width:150px"><label class="lbl">Others 1 (₹)</label><input class="inp num" type="number" id="o1amt" placeholder="0"></div>
+          <div class="col" style="flex:2"><label class="lbl">Others 1 — reason</label><input class="inp" id="o1reason" placeholder="Reason"></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div class="col" style="max-width:150px"><label class="lbl">Others 2 (₹)</label><input class="inp num" type="number" id="o2amt" placeholder="0"></div>
+          <div class="col" style="flex:2"><label class="lbl">Others 2 — reason</label><input class="inp" id="o2reason" placeholder="Reason"></div>
+        </div>
+        <div style="margin-top:16px" id="reconBox"></div>
+      </div>
+
+      <div class="card">
+        <label class="lbl">Notes</label><input class="inp" id="notes" placeholder="Anything to remember about today…">
+        <div class="actions" style="margin-top:14px">
+          <button class="btn btn-save" id="saveDay">Save day</button>
+          <button class="btn-ghost" id="clearDay">Reset closing</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-history" class="hide"><div class="card"><h2>Saved days</h2><div id="histList"></div></div></section>
+
+  <section id="tab-report" class="hide">
+    <div class="card no-print"><h2>Report period</h2>
+      <div class="row">
+        <div class="col"><label class="lbl">From</label><input class="inp" type="date" id="rFrom"></div>
+        <div class="col"><label class="lbl">To</label><input class="inp" type="date" id="rTo"></div>
+        <div class="col" style="display:flex;align-items:flex-end"><button class="btn btn-save" id="runReport" style="flex:1">Show</button></div>
+      </div>
+      <div class="actions" style="margin-top:10px"><button class="btn-ghost" id="exportCsv">Export CSV</button><button class="btn-ghost" id="printReport">Print</button></div>
+    </div>
+    <div id="reportOut"></div>
+  </section>
+</main>
+
+<!-- NOT-READY shop placeholder -->
+<section id="notready" class="hide" style="max-width:520px;margin:0 auto;padding:60px 20px">
+  <div class="card" style="text-align:center;padding:34px 24px">
+    <div class="brand" style="justify-content:center;margin-bottom:10px">
+      <svg width="30" height="30" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="#171a21"/><g stroke="#e79a26" stroke-width="2.2" stroke-linecap="round" fill="none"><circle cx="22" cy="22" r="9.2"/><path d="M22 12.8 L27 21 M22 12.8 L17 21 M30 20 L21 21 M30 20 L26 28 M27 30.5 L23 23 M27 30.5 L18 29 M14 28.5 L23 23 M14 28.5 L18 20"/></g><circle cx="22" cy="22" r="3" fill="#e79a26"/></svg>
+    </div>
+    <h2 style="font-size:17px;margin:0 0 6px"><span id="nrName">This</span> counter</h2>
+    <p style="color:var(--muted);margin:0 0 20px;font-size:14px">This counter's account page is being set up. Once its products and rates are added, this login will open its daily sheet — just like Yercaud.</p>
+    <button class="btn-ghost" id="nrLogout">Log out</button>
+  </div>
+</section>
+
+<!-- ADMIN DASHBOARD -->
+<main id="admin" class="hide">
+  <div class="topbar">
+    <div class="brand" style="gap:9px">
+      <svg width="24" height="24" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="#171a21"/><g stroke="#e79a26" stroke-width="2.2" stroke-linecap="round" fill="none"><circle cx="22" cy="22" r="9.2"/><path d="M22 12.8 L27 21 M22 12.8 L17 21 M30 20 L21 21 M30 20 L26 28 M27 30.5 L23 23 M27 30.5 L18 29 M14 28.5 L23 23 M14 28.5 L18 20"/></g><circle cx="22" cy="22" r="3" fill="#e79a26"/></svg>
+      <h1 style="margin:0;font-size:15px">MS Studio <span class="loc-tag" style="color:#7b45c7;background:#f2ecfb;border-color:#e0cff5">Admin</span></h1>
+    </div>
+    <div class="who"><button class="btn-ghost" id="adLogout">Log out</button></div>
+  </div>
+  <div class="tabs" style="max-width:440px"><button data-adtab="dash" class="active">Dashboard</button><button data-adtab="prices">Products &amp; prices</button></div>
+  <div class="card no-print" id="adDateCard">
+    <div class="row" style="align-items:flex-end">
+      <div class="col" style="max-width:220px"><label class="lbl">Date</label><input class="inp" type="date" id="adDate"></div>
+      <div class="col" style="max-width:150px;display:flex;align-items:flex-end"><button class="btn btn-save" id="adRefresh" style="flex:1">Refresh</button></div>
+    </div>
+  </div>
+  <div id="adBody"></div>
+  <div id="adPrices" class="hide"></div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- storage: works in Claude preview (window.storage) and on Vercel (localStorage) ---------- */
+const _mem={};
+const Store={
+  async get(k){try{if(window.storage&&window.storage.get){const r=await window.storage.get(k);return r?JSON.parse(r.value):null;}}catch(e){}
+    try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch(e){} return (k in _mem)?_mem[k]:null;},
+  async set(k,v){const s=JSON.stringify(v);try{if(window.storage&&window.storage.set){await window.storage.set(k,s);return;}}catch(e){}
+    try{localStorage.setItem(k,s);return;}catch(e){} _mem[k]=v;}
+};
+
+/* ---------- cloud sync (Vercel + Upstash) with local fallback ---------- */
+let REMOTE=false;
+async function detectRemote(){try{const r=await fetch('/api/ping',{cache:'no-store'});if(r.ok){const j=await r.json();REMOTE=!!j.db;}}catch(e){REMOTE=false;}}
+async function loadShopData(id){
+  if(REMOTE){try{const r=await fetch('/api/load?shop='+encodeURIComponent(id),{cache:'no-store'});if(r.ok)return await r.json();}catch(e){}}
+  const k=shopKeys(id);
+  return {entries:await Store.get(k.entries),items:await Store.get(k.items),photo:await Store.get(k.photo)};
+}
+async function saveShopData(id,data){
+  if(REMOTE){try{await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({shop:id},data))});}catch(e){}}
+  const k=shopKeys(id);
+  if(data.entries!==undefined)await Store.set(k.entries,data.entries);
+  if(data.items!==undefined)await Store.set(k.items,data.items);
+  if(data.photo!==undefined)await Store.set(k.photo,data.photo);
+}
+const SHOPS={
+  yercaud :{id:'yercaud', name:'Yercaud',  pass:'yercaudpass',  ready:true },
+  photobox:{id:'photobox',name:'Photobox', pass:'photoboxpass', ready:false},
+  pykara  :{id:'pykara',  name:'Pykara',   pass:'pykarapass',   ready:false},
+  ooty    :{id:'ooty',    name:'Ooty',     pass:'ootypass',     ready:false},
+  admin   :{id:'admin',   name:'Admin',    pass:'adminpass',    role:'admin'},
+};
+const SESSION='msacc_session';
+let KK=null;                                    // per-shop storage keys, set at login
+function shopKeys(id){const p='msacc_'+id+'_';return{entries:p+'entries',items:p+'items',photo:p+'photo'};}
+
+/* default masters (editable) */
+const DEF_ITEMS=[
+  {id:'f8x20',seg:'Frames',name:'8x20 Frame',rate:1000},
+  {id:'f8x12a',seg:'Frames',name:'8x12 Frame (500)',rate:500},
+  {id:'f8x12b',seg:'Frames',name:'8x12 Frame (350)',rate:350},
+  {id:'f8x12c',seg:'Frames',name:'8x12 Frame (250)',rate:250},
+  {id:'kround',seg:'Keychains',name:'Round Keychain',rate:80},
+  {id:'kred',seg:'Keychains',name:'Red Keychain',rate:100},
+  {id:'kwood',seg:'Keychains',name:'Wood Keychain',rate:150},
+  {id:'ymag',seg:'Magnets',name:'Y.Mag',rate:100},
+  {id:'mag',seg:'Magnets',name:'Magnet',rate:250},
+  {id:'cup',seg:'Other',name:'Cup',rate:400},
+];
+const DEF_PHOTO=[{size:'8x20',rate:500},{size:'8x12',rate:250},{size:'8x4',rate:0}];
+const DEF_EXP=['Tea','Sathiya','Akka','Less'];
+
+/* ---------- helpers ---------- */
+const $=s=>document.querySelector(s);
+const el=(t,c)=>{const e=document.createElement(t);if(c)e.className=c;return e;};
+const todayStr=()=>new Date().toLocaleDateString('en-CA');
+const inr=n=>'₹'+(Number(n)||0).toLocaleString('en-IN',{maximumFractionDigits:2});
+const num=v=>{const n=parseFloat(v);return isFinite(n)?n:0;};
+const pretty=d=>{const[y,m,dd]=d.split('-');return new Date(y,m-1,dd).toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});};
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1900);}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+/* ---------- state ---------- */
+let shop=null, entries={}, items=[], photoSizes=[], draft=null;
+
+/* ---------- auth ---------- */
+$('#loginForm').addEventListener('submit',async e=>{e.preventDefault();
+  const u=$('#u').value.trim().toLowerCase(),p=$('#p').value;
+  const s=SHOPS[u];
+  if(!s||s.pass!==p){$('#loginErr').textContent='Wrong login details.';return;}
+  $('#loginErr').textContent='';await Store.set(SESSION,{id:s.id});await enterShop(s);});
+function doLogout(){Store.set(SESSION,null);shop=null;KK=null;
+  $('#app').classList.add('hide');$('#notready').classList.add('hide');$('#login').classList.remove('hide');$('#u').value='';$('#p').value='';}
+$('#logoutBtn').addEventListener('click',doLogout);
+$('#nrLogout').addEventListener('click',doLogout);
+
+async function enterShop(s){
+  shop=s;
+  if(s.role==='admin'){await showAdmin();return;}
+  KK=shopKeys(s.id);
+  $('#login').classList.add('hide');
+  $('#locTag').textContent=s.name;$('#whoName').textContent=s.name;$('#nrName').textContent=s.name;
+  if(!s.ready){$('#app').classList.add('hide');$('#notready').classList.remove('hide');return;}
+  $('#notready').classList.add('hide');$('#app').classList.remove('hide');
+  const d=await loadShopData(s.id);
+  entries=d.entries||{};
+  items=d.items||(s.id==='yercaud'?JSON.parse(JSON.stringify(DEF_ITEMS)):[]);
+  photoSizes=d.photo||(s.id==='yercaud'?JSON.parse(JSON.stringify(DEF_PHOTO)):[]);
+  loadDay(todayStr());
+  $('#rFrom').value=firstOfMonth();$('#rTo').value=todayStr();
+  renderHistory();
+}
+function firstOfMonth(){const d=new Date();return new Date(d.getFullYear(),d.getMonth(),1).toLocaleDateString('en-CA');}
+
+/* ---------- carry forward ---------- */
+function prevClose(date,id){
+  const keys=Object.keys(entries).filter(d=>d<date).sort();
+  for(let i=keys.length-1;i>=0;i--){const st=(entries[keys[i]].stock||[]).find(s=>s.id===id);if(st)return num(st.close);}
+  return 0;
+}
+function blankDay(date){
+  return{date,opened:false,opening:0,sign:'',cash:0,gpay:0,tea:0,less:0,
+    o1:{amt:0,reason:''},o2:{amt:0,reason:''},notes:'',
+    photos:photoSizes.map(p=>({size:p.size,count:0})),
+    stock:items.map(it=>({id:it.id,carried:prevClose(date,it.id),newStock:0,close:0,waste:0}))};
+}
+
+/* ---------- load day ---------- */
+function loadDay(date){
+  if(entries[date]){draft=JSON.parse(JSON.stringify(entries[date]));
+    if(draft.opened===undefined)draft.opened=true;        // days saved before the lock feature
+    items.forEach(it=>{if(!draft.stock.find(s=>s.id===it.id))draft.stock.push({id:it.id,carried:prevClose(date,it.id),newStock:0,close:0,waste:0});});
+    photoSizes.forEach(p=>{if(!draft.photos.find(x=>x.size===p.size))draft.photos.push({size:p.size,count:0});});
+  } else draft=blankDay(date);
+  draft.o1=draft.o1||{amt:0,reason:''};draft.o2=draft.o2||{amt:0,reason:''};
+  $('#entryDate').value=draft.date;$('#gateDate').value=draft.date;
+  $('#opening').value=draft.opening||'';$('#sign').value=draft.sign||'';
+  $('#cash').value=draft.cash||'';$('#gpay').value=draft.gpay||'';
+  $('#tea').value=draft.tea||'';$('#less').value=draft.less||'';
+  $('#o1amt').value=draft.o1.amt||'';$('#o1reason').value=draft.o1.reason||'';
+  $('#o2amt').value=draft.o2.amt||'';$('#o2reason').value=draft.o2.reason||'';
+  $('#notes').value=draft.notes||'';
+  renderGate();renderPhotos();renderStock();recalc();
+  showDayView(draft.opened?'sheet':'gate');
+  switchTab('day');
+}
+function showDayView(which){
+  $('#dayGate').classList.toggle('hide',which!=='gate');
+  $('#daySheet').classList.toggle('hide',which!=='sheet');
+}
+/* ---------- new-stock gate ---------- */
+function renderGate(){
+  const b=$('#gateBody');b.innerHTML='';let seg='';
+  if(!items.length){b.innerHTML=`<tr><td colspan="5" style="padding:14px;color:var(--muted)">No items yet — set products &amp; prices from the Admin portal.</td></tr>`;return;}
+  items.forEach(it=>{
+    if(it.seg!==seg){seg=it.seg;const sr=el('tr');sr.innerHTML=`<td colspan="5"><div class="seg">${esc(seg)}</div></td>`;b.appendChild(sr);}
+    let s=draft.stock.find(x=>x.id===it.id);if(!s){s={id:it.id,carried:prevClose(draft.date,it.id),newStock:0,close:0,waste:0};draft.stock.push(s);}
+    const tr=el('tr');
+    tr.innerHTML=`<td class="l">${esc(it.name)}</td>
+      <td class="num" style="font-weight:700;color:var(--amber-d)">${inr(it.rate)}</td>
+      <td><span class="carry">${s.carried||0}</span></td>
+      <td><input class="j-new num" type="number" min="0" value="${s.newStock||''}"></td>
+      <td><b class="j-open num">${num(s.carried)+num(s.newStock)}</b></td>`;
+    tr.querySelector('.j-new').oninput=e=>{s.newStock=num(e.target.value);tr.querySelector('.j-open').textContent=num(s.carried)+num(s.newStock);};
+    b.appendChild(tr);
+  });
+}
+$('#gateDate').addEventListener('change',e=>loadDay(e.target.value));
+$('#openDay').addEventListener('click',async()=>{
+  draft.opened=true;draft.savedAt=new Date().toISOString();stampRates(draft);
+  entries[draft.date]=JSON.parse(JSON.stringify(draft));
+  await saveShopData(shop.id,{entries,items,photo:photoSizes});
+  renderStock();recalc();showDayView('sheet');renderHistory();
+  toast('Day opened — opening is now locked');
+});
+$('#addStockOwner').addEventListener('click',()=>{
+  const pw=prompt('Owner password to add or edit stock:');
+  if(pw===null)return;
+  if(pw!==shop.pass){toast('Wrong password');return;}
+  renderGate();showDayView('gate');
+});
+
+/* ---------- photos ---------- */
+function renderPhotos(){
+  const b=$('#photoBody');b.innerHTML='';
+  draft.photos.forEach(ph=>{
+    const master=photoSizes.find(p=>p.size===ph.size)||{rate:0};
+    const tr=el('tr');
+    tr.innerHTML=`<td class="l">${esc(ph.size)}</td>
+      <td class="num" style="font-weight:700;color:var(--amber-d)">${inr(master.rate)}</td>
+      <td><input class="j-c num" type="number" min="0" value="${ph.count||''}"></td>
+      <td class="amt">${inr(num(ph.count)*num(master.rate))}</td>`;
+    tr.querySelector('.j-c').oninput=e=>{ph.count=num(e.target.value);recalc();renderPhotoAmt();};
+    b.appendChild(tr);
+  });
+}
+function renderPhotoAmt(){[...$('#photoBody').children].forEach((tr,i)=>{const ph=draft.photos[i];const m=photoSizes.find(p=>p.size===ph.size)||{rate:0};tr.querySelector('.amt').textContent=inr(num(ph.count)*num(m.rate));});}
+
+/* ---------- stock ---------- */
+function renderStock(){
+  const b=$('#stockBody');b.innerHTML='';let seg='';
+  if(!items.length){b.innerHTML=`<tr><td colspan="7" style="padding:14px;color:var(--muted)">No items set up yet.</td></tr>`;return;}
+  items.forEach(it=>{
+    if(it.seg!==seg){seg=it.seg;const sr=el('tr');sr.innerHTML=`<td colspan="7"><div class="seg">${esc(seg)}</div></td>`;b.appendChild(sr);}
+    let s=draft.stock.find(x=>x.id===it.id);if(!s){s={id:it.id,carried:prevClose(draft.date,it.id),newStock:0,close:0,waste:0};draft.stock.push(s);}
+    const open=num(s.carried)+num(s.newStock);const sold=Math.max(0,open-num(s.close)-num(s.waste));
+    const rate=num(it.rate);const tr=el('tr');
+    tr.innerHTML=`<td class="l">${esc(it.name)}</td>
+      <td class="num" style="font-weight:700;color:var(--amber-d)">${inr(rate)}</td>
+      <td><b class="j-open num" title="Carried ${s.carried||0} + New ${s.newStock||0}">${open}</b></td>
+      <td><input class="j-cl num" type="number" min="0" value="${s.close||''}"></td>
+      <td><input class="j-w num" type="number" min="0" value="${s.waste||''}"></td>
+      <td class="diff j-sold">${sold}</td>
+      <td class="amt j-amt">${inr(sold*rate)}</td>`;
+    const upd=()=>{const o=num(s.carried)+num(s.newStock);const sd=Math.max(0,o-num(s.close)-num(s.waste));
+      tr.querySelector('.j-sold').textContent=sd;tr.querySelector('.j-amt').textContent=inr(sd*num(it.rate));recalc();};
+    tr.querySelector('.j-cl').oninput=e=>{s.close=num(e.target.value);upd();};
+    tr.querySelector('.j-w').oninput=e=>{s.waste=num(e.target.value);upd();};
+    b.appendChild(tr);
+  });
+}
+$('#addItem').addEventListener('click',()=>{
+  const name=prompt('Item name (e.g. 8x14 Frame)');if(!name)return;
+  const rate=num(prompt('Rate ₹',''));const seg=prompt('Group (Frames / Keychains / Magnets / Other)','Other')||'Other';
+  const id='x'+Date.now();items.push({id,seg,name,rate});
+  draft.stock.push({id,carried:prevClose(draft.date,id),newStock:0,close:0,waste:0});renderGate();
+});
+
+/* ---------- expenses are now fixed fields (Tea / Less / Others 1&2) ---------- */
+
+/* ---------- header inputs ---------- */
+['opening','cash','gpay','tea','less'].forEach(id=>{$('#'+id).addEventListener('input',e=>{draft[id]=num(e.target.value);recalc();});});
+$('#sign').addEventListener('input',e=>{draft.sign=e.target.value;});
+$('#notes').addEventListener('input',e=>{draft.notes=e.target.value;});
+$('#o1amt').addEventListener('input',e=>{draft.o1.amt=num(e.target.value);recalc();});
+$('#o1reason').addEventListener('input',e=>{draft.o1.reason=e.target.value;});
+$('#o2amt').addEventListener('input',e=>{draft.o2.amt=num(e.target.value);recalc();});
+$('#o2reason').addEventListener('input',e=>{draft.o2.reason=e.target.value;});
+$('#entryDate').addEventListener('change',e=>loadDay(e.target.value));
+
+/* ---------- calc ---------- */
+const COUNTERS=['yercaud','photobox','pykara','ooty'];
+function soldInfo(day,its,ph){
+  let photo=0,stockAmt=0,newStk=0;const rows=[];
+  (day.photos||[]).forEach(x=>{const m=(ph||[]).find(p=>p.size===x.size)||{rate:0};const rate=(x.rate!=null?num(x.rate):num(m.rate));const a=num(x.count)*rate;photo+=a;if(num(x.count))rows.push({name:'Photo '+x.size,qty:num(x.count),amt:a});});
+  (day.stock||[]).forEach(s=>{const it=(its||[]).find(i=>i.id===s.id);if(!it)return;newStk+=num(s.newStock);const open=num(s.carried)+num(s.newStock);const sold=Math.max(0,open-num(s.close)-num(s.waste));const rate=(s.rate!=null?num(s.rate):num(it.rate));const a=sold*rate;stockAmt+=a;if(sold)rows.push({name:it.name,qty:sold,amt:a});});
+  const tea=num(day.tea),less=num(day.less),o1=num(day.o1&&day.o1.amt),o2=num(day.o2&&day.o2.amt);
+  const exp=tea+less+o1+o2,cash=num(day.cash),gpay=num(day.gpay),gross=photo+stockAmt;
+  return{photo,stock:stockAmt,gross,net:gross,exp,tea,less,o1,o2,cash,gpay,newStk,rows};
+}
+function calcFull(day,its,ph){const r=soldInfo(day,its,ph);const collected=r.cash+r.gpay;r.collected=collected;r.diff=r.gross-r.exp-collected;return r;}
+function calc(day){return calcFull(day,items,photoSizes);}
+function stampRates(day){ // freeze today's prices onto the saved day
+  (day.stock||[]).forEach(s=>{const it=items.find(i=>i.id===s.id);if(it)s.rate=num(it.rate);});
+  (day.photos||[]).forEach(x=>{const m=photoSizes.find(p=>p.size===x.size);if(m)x.rate=num(m.rate);});
+}
+function recalc(){
+  const c=calc(draft);
+  $('#summary').innerHTML=`
+    <div class="stat sales"><div class="k">Photo sales</div><div class="v">${inr(c.photo)}</div></div>
+    <div class="stat sales"><div class="k">Stock sales</div><div class="v">${inr(c.stock)}</div></div>
+    <div class="stat"><div class="k">Gross total</div><div class="v">${inr(c.gross)}</div></div>
+    <div class="stat exp"><div class="k">Expenses</div><div class="v">${inr(c.exp)}</div></div>`;
+  const ok=Math.abs(c.diff)<1;
+  $('#reconBox').innerHTML=`
+    <div class="recon"><span>Gross sales</span><b>${inr(c.gross)}</b></div>
+    <div class="recon"><span>− Expenses (Tea + Less + Others)</span><b class="num">${inr(c.exp)}</b></div>
+    <div class="recon"><span>− Collected (Cash + GPay)</span><b class="num">${inr(c.collected)}</b></div>
+    <div class="recon big"><span>Difference</span><b>${inr(c.diff)}</b></div>
+    <div class="diffbox ${ok?'ok':'bad'}">${ok?'✓ Tallied — everything matches':'Off by '+inr(Math.abs(c.diff))+' — check the numbers'}</div>`;
+}
+
+/* ---------- save / reset ---------- */
+$('#saveDay').addEventListener('click',async()=>{
+  draft.savedAt=new Date().toISOString();stampRates(draft);
+  entries[draft.date]=JSON.parse(JSON.stringify(draft));
+  await saveShopData(shop.id,{entries,items,photo:photoSizes});
+  toast('Saved '+pretty(draft.date));renderHistory();
+});
+$('#clearDay').addEventListener('click',()=>{if(confirm("Clear today's closing entries? The locked opening stays as it is.")){
+  draft.stock.forEach(s=>{s.close=0;s.waste=0;});
+  draft.photos.forEach(p=>p.count=0);
+  draft.cash=0;draft.gpay=0;draft.tea=0;draft.less=0;draft.o1={amt:0,reason:''};draft.o2={amt:0,reason:''};
+  ['cash','gpay','tea','less','o1amt','o1reason','o2amt','o2reason'].forEach(id=>$('#'+id).value='');
+  renderPhotos();renderStock();recalc();toast('Closing cleared');
+}});
+
+/* ---------- history ---------- */
+function renderHistory(){
+  const list=$('#histList');const keys=Object.keys(entries).sort().reverse();
+  if(!keys.length){list.innerHTML=`<div class="empty"><b>No saved days yet</b>Fill the day sheet and press Save day.</div>`;return;}
+  list.innerHTML='';
+  keys.forEach(d=>{const c=calc(entries[d]);const row=el('div','hist-item');
+    row.innerHTML=`<div class="hist-date">${pretty(d)}<small>Gross ${inr(c.gross)} · Net ${inr(c.net)}</small></div>
+      <div class="hist-figs"><div class="fg">Cash<b>${inr(entries[d].cash)}</b></div><div class="fg">GPay<b>${inr(entries[d].gpay)}</b></div>
+      <button class="btn-ghost j-open">Open</button><button class="x j-del">×</button></div>`;
+    row.querySelector('.j-open').onclick=()=>loadDay(d);
+    row.querySelector('.j-del').onclick=async e=>{e.stopPropagation();if(confirm('Delete '+pretty(d)+'?')){delete entries[d];await saveShopData(shop.id,{entries});renderHistory();toast('Deleted');}};
+    list.appendChild(row);});
+}
+
+/* ---------- report ---------- */
+$('#runReport').addEventListener('click',renderReport);
+function inRange(){const f=$('#rFrom').value,t=$('#rTo').value;return Object.keys(entries).filter(d=>(!f||d>=f)&&(!t||d<=t)).sort();}
+function renderReport(){
+  const days=inRange();const out=$('#reportOut');
+  if(!days.length){out.innerHTML=`<div class="card"><div class="empty"><b>No data in range</b>Pick another period.</div></div>`;return;}
+  let G=0,N=0,P=0,ST=0,E=0,cash=0,gpay=0;const perItem={};
+  days.forEach(d=>{const e=entries[d];const c=calc(e);G+=c.gross;N+=c.net;P+=c.photo;ST+=c.stock;E+=c.exp;cash+=num(e.cash);gpay+=num(e.gpay);
+    e.stock.forEach(s=>{const it=items.find(i=>i.id===s.id);if(!it)return;const open=num(s.carried)+num(s.newStock);const sold=Math.max(0,open-num(s.close)-num(s.waste));const rate=(s.rate!=null?num(s.rate):num(it.rate));if(!perItem[it.name])perItem[it.name]={q:0,a:0};perItem[it.name].q+=sold;perItem[it.name].a+=sold*rate;});
+    e.photos.forEach(ph=>{const m=photoSizes.find(p=>p.size===ph.size)||{rate:0};const rate=(ph.rate!=null?num(ph.rate):num(m.rate));const nm='Photo '+ph.size;if(!perItem[nm])perItem[nm]={q:0,a:0};perItem[nm].q+=num(ph.count);perItem[nm].a+=num(ph.count)*rate;});});
+  const items_rows=Object.entries(perItem).filter(([,v])=>v.q||v.a).sort((a,b)=>b[1].a-a[1].a).map(([n,v])=>`<tr><td>${esc(n)}</td><td class="n">${v.q}</td><td class="n">${inr(v.a)}</td></tr>`).join('');
+  const day_rows=days.map(d=>{const c=calc(entries[d]);return`<tr><td>${pretty(d)}</td><td class="n">${inr(c.gross)}</td><td class="n">${inr(c.net)}</td><td class="n">${inr(num(entries[d].cash))}</td><td class="n">${inr(num(entries[d].gpay))}</td></tr>`;}).join('');
+  out.innerHTML=`
+    <div class="card"><h2>Summary <span class="sub">${pretty(days[0])} – ${pretty(days[days.length-1])} · ${days.length} day(s)</span></h2>
+      <div class="summary">
+        <div class="stat sales"><div class="k">Gross sales</div><div class="v">${inr(G)}</div></div>
+        <div class="stat sales"><div class="k">Net sales</div><div class="v">${inr(N)}</div></div>
+        <div class="stat exp"><div class="k">Expenses</div><div class="v">${inr(E)}</div></div>
+        <div class="stat cash"><div class="k">Avg/day</div><div class="v">${inr(N/days.length)}</div></div></div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;font-size:13px">
+        <span class="stat" style="padding:8px 12px">Photos ${inr(P)}</span><span class="stat" style="padding:8px 12px">Stock ${inr(ST)}</span>
+        <span class="stat" style="padding:8px 12px">Cash ${inr(cash)}</span><span class="stat" style="padding:8px 12px">GPay ${inr(gpay)}</span></div></div>
+    <div class="card"><h2>Item-wise</h2><table class="tbl"><thead><tr><th class="l">Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Amount</th></tr></thead><tbody>${items_rows}</tbody></table></div>
+    <div class="card"><h2>Day-wise</h2><table class="tbl"><thead><tr><th class="l">Date</th><th style="text-align:right">Gross</th><th style="text-align:right">Net</th><th style="text-align:right">Cash</th><th style="text-align:right">GPay</th></tr></thead><tbody>${day_rows}</tbody></table></div>`;
+  out.querySelectorAll('td.n').forEach(td=>td.style.textAlign='right');
+}
+$('#printReport').addEventListener('click',()=>{if(!$('#reportOut').innerHTML.trim())renderReport();window.print();});
+$('#exportCsv').addEventListener('click',()=>{const days=inRange();if(!days.length){toast('Nothing to export');return;}
+  let rows=[['Date','Section','Item','Open','Close','Waste','Sold/Count','Rate','Amount']];
+  days.forEach(d=>{const e=entries[d];
+    e.photos.forEach(ph=>{const m=photoSizes.find(p=>p.size===ph.size)||{rate:0};const rate=(ph.rate!=null?num(ph.rate):num(m.rate));rows.push([d,'Photo',ph.size,'','','',ph.count,rate,num(ph.count)*rate]);});
+    e.stock.forEach(s=>{const it=items.find(i=>i.id===s.id);if(!it)return;const open=num(s.carried)+num(s.newStock);const sold=Math.max(0,open-num(s.close)-num(s.waste));const rate=(s.rate!=null?num(s.rate):num(it.rate));rows.push([d,it.seg,it.name,open,s.close,s.waste,sold,rate,sold*rate]);});
+    [['Tea',num(e.tea)],['Less',num(e.less)],[(e.o1&&e.o1.reason)||'Others 1',num(e.o1&&e.o1.amt)],[(e.o2&&e.o2.reason)||'Others 2',num(e.o2&&e.o2.amt)]].forEach(([nm,amt])=>{if(amt)rows.push([d,'Expense',nm,'','','','','',amt]);});});
+  const csv=rows.map(r=>r.map(c=>`"${String(c??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});const a=el('a');a.href=URL.createObjectURL(blob);a.download=`msacc_${shop.id}_${$('#rFrom').value}_to_${$('#rTo').value}.csv`;document.body.appendChild(a);a.click();a.remove();toast('CSV downloaded');});
+
+/* ---------- tabs ---------- */
+document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+function switchTab(n){document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===n));
+  ['day','history','report'].forEach(t=>$('#tab-'+t).classList.toggle('hide',t!==n));
+  if(n==='report'&&!$('#reportOut').innerHTML.trim())renderReport();}
+
+/* ================= ADMIN DASHBOARD ================= */
+const AD_COLORS=['#e79a26','#3a6ea5','#12946a','#d15546'];
+async function showAdmin(){
+  $('#login').classList.add('hide');$('#app').classList.add('hide');$('#notready').classList.add('hide');
+  $('#admin').classList.remove('hide');
+  if(!$('#adDate').value)$('#adDate').value=todayStr();
+  await renderAdmin();
+  setAdTab('dash');
+}
+$('#adLogout').addEventListener('click',()=>{$('#admin').classList.add('hide');doLogout();});
+$('#adRefresh').addEventListener('click',renderAdmin);
+$('#adDate').addEventListener('change',renderAdmin);
+
+function donut(data){ // [{label,value,color}]
+  const total=data.reduce((a,d)=>a+d.value,0)||1;
+  let ang=-Math.PI/2;const R=70,r=40,cx=80,cy=80;let paths='';
+  data.forEach(d=>{const frac=d.value/total;let a2=ang+frac*2*Math.PI;if(frac>=0.9999)a2=ang+2*Math.PI-0.0001;
+    const x1=cx+R*Math.cos(ang),y1=cy+R*Math.sin(ang),x2=cx+R*Math.cos(a2),y2=cy+R*Math.sin(a2);
+    const large=frac>0.5?1:0;
+    paths+=`<path d="M${cx} ${cy} L${x1.toFixed(2)} ${y1.toFixed(2)} A${R} ${R} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z" fill="${d.color}"/>`;
+    ang=a2;});
+  return `<svg viewBox="0 0 160 160" width="150" height="150">${paths}<circle cx="${cx}" cy="${cy}" r="${r}" fill="#fff"/></svg>`;
+}
+function barsH(data){ // [{label,value}]
+  const max=Math.max(1,...data.map(d=>d.value));
+  return `<div class="bars">`+data.map(d=>{const w=Math.round(d.value/max*100);
+    return `<div class="barrow"><span class="blabel">${esc(d.label)}</span><span class="btrack"><span class="bfill" style="width:${w}%"></span></span><span class="bval">${inr(d.value)}</span></div>`;}).join('')+`</div>`;
+}
+
+async function renderAdmin(){
+  const date=$('#adDate').value||todayStr();
+  const per=[];
+  for(const id of COUNTERS){
+    const d=await loadShopData(id);
+    const ents=d.entries||{};
+    const its=d.items||(id==='yercaud'?DEF_ITEMS:[]);
+    const ph=d.photo||(id==='yercaud'?DEF_PHOTO:[]);
+    const e=ents[date];
+    per.push({id,name:SHOPS[id].name,e,info:e?soldInfo(e,its,ph):null});
+  }
+  const body=$('#adBody');
+  if(!per.some(p=>p.info)){
+    body.innerHTML=`<div class="card"><div class="empty"><b>No entries for ${pretty(date)}</b>No counter has saved this day yet. Save a day on a counter, then refresh here.</div></div>`;
+    return;
+  }
+  let totG=0,totExp=0,totCash=0,totGpay=0,totNew=0;const prod={};
+  per.forEach(p=>{if(!p.info)return;const i=p.info;totG+=i.gross;totExp+=i.exp;totCash+=i.cash;totGpay+=i.gpay;totNew+=i.newStk;
+    i.rows.forEach(r=>{if(!prod[r.name])prod[r.name]={q:0,a:0};prod[r.name].q+=r.qty;prod[r.name].a+=r.amt;});});
+  const active=per.filter(p=>p.info&&p.info.gross>0).sort((a,b)=>b.info.gross-a.info.gross);
+  const best=active[0];
+
+  const cards=per.map(p=>{
+    if(!p.info)return `<div class="cc off"><div class="ccn">${esc(p.name)}</div><div class="ccm" style="margin-top:8px">No entry for this day</div></div>`;
+    const isBest=best&&p.id===best.id;
+    return `<div class="cc ${isBest?'best':''}"><div class="ccn"><span>${esc(p.name)}</span>${isBest?'<span class="badge">Top</span>':''}</div>
+      <div class="ccg">${inr(p.info.gross)}</div>
+      <div class="ccm">Cash ${inr(p.info.cash)} · GPay ${inr(p.info.gpay)}<br>New stock ${p.info.newStk} · Expenses ${inr(p.info.exp)}</div></div>`;
+  }).join('');
+
+  const share=per.filter(p=>p.info&&p.info.gross>0).map(p=>({label:p.name,value:p.info.gross,color:AD_COLORS[COUNTERS.indexOf(p.id)]}));
+  const legend=share.map(s=>`<div class="li"><span class="sw" style="background:${s.color}"></span>${esc(s.label)} — <b>${inr(s.value)}</b> (${Math.round(s.value/totG*100)}%)</div>`).join('');
+  const prodArr=Object.entries(prod).map(([n,v])=>({label:n,value:v.a})).sort((a,b)=>b.value-a.value).slice(0,8);
+  const newRows=per.map(p=>`<tr><td class="l">${esc(p.name)}</td><td class="n">${p.info?p.info.newStk:'—'}</td></tr>`).join('');
+  const soldRows=Object.entries(prod).sort((a,b)=>b[1].a-a[1].a).map(([n,v])=>`<tr><td class="l">${esc(n)}</td><td class="n">${v.q}</td><td class="n">${inr(v.a)}</td></tr>`).join('')||`<tr><td colspan="3" style="padding:12px;color:var(--muted)">Nothing sold this day.</td></tr>`;
+
+  body.innerHTML=`
+    <div class="card"><h2>All counters <span class="sub">${pretty(date)}</span></h2>
+      <div class="summary">
+        <div class="stat sales"><div class="k">Total business</div><div class="v">${inr(totG)}</div></div>
+        <div class="stat cash"><div class="k">Cash</div><div class="v">${inr(totCash)}</div></div>
+        <div class="stat"><div class="k">GPay</div><div class="v">${inr(totGpay)}</div></div>
+        <div class="stat exp"><div class="k">Expenses</div><div class="v">${inr(totExp)}</div></div>
+      </div>
+      <div style="margin-top:12px;font-size:13.5px;color:var(--ink-2)">${best?`<b>${esc(best.name)}</b> performed best today with <b>${inr(best.info.gross)}</b>. Total new stock moved to counters: <b>${totNew}</b>.`:''}</div>
+    </div>
+
+    <div class="card"><h2>Each counter</h2><div class="ad-grid">${cards}</div></div>
+
+    <div class="card"><h2>Sales share by counter</h2>
+      <div class="chartwrap"><div>${donut(share)}</div><div class="legend">${legend}</div></div>
+    </div>
+
+    <div class="card"><h2>Top products sold <span class="sub">— all counters, by value</span></h2>${barsH(prodArr)}</div>
+
+    <div class="row">
+      <div class="col" style="min-width:260px"><div class="card"><h2>New stock taken today</h2>
+        <table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">New units</th></tr></thead><tbody>${newRows}</tbody></table></div></div>
+      <div class="col" style="min-width:260px"><div class="card"><h2>Products sold</h2>
+        <table class="tbl"><thead><tr><th class="l">Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Amount</th></tr></thead><tbody>${soldRows}</tbody></table></div></div>
+    </div>`;
+}
+
+/* ---------- admin tabs ---------- */
+function setAdTab(n){
+  document.querySelectorAll('[data-adtab]').forEach(b=>b.classList.toggle('active',b.dataset.adtab===n));
+  const dash=n==='dash';
+  $('#adDateCard').classList.toggle('hide',!dash);
+  $('#adBody').classList.toggle('hide',!dash);
+  $('#adPrices').classList.toggle('hide',dash);
+  if(!dash)renderPrices();
+}
+document.querySelectorAll('[data-adtab]').forEach(b=>b.addEventListener('click',()=>setAdTab(b.dataset.adtab)));
+
+/* ---------- admin price editor ---------- */
+let priceShop='yercaud',priceItems=[],pricePhotos=[];
+async function renderPrices(){
+  const d=await loadShopData(priceShop);
+  priceItems =(d.items&&d.items.length)?JSON.parse(JSON.stringify(d.items)) :(priceShop==='yercaud'?JSON.parse(JSON.stringify(DEF_ITEMS)):[]);
+  pricePhotos=(d.photo&&d.photo.length)?JSON.parse(JSON.stringify(d.photo)):(priceShop==='yercaud'?JSON.parse(JSON.stringify(DEF_PHOTO)):[]);
+  drawPrices();
+}
+function drawPrices(){
+  const w=$('#adPrices');
+  w.innerHTML=`
+    <div class="card no-print"><h2>Products &amp; prices</h2>
+      <div class="row" style="margin-bottom:4px"><div class="col" style="max-width:260px"><label class="lbl">Counter</label>
+        <select class="inp" id="priceShopSel">${COUNTERS.map(c=>`<option value="${c}" ${c===priceShop?'selected':''}>${esc(SHOPS[c].name)}</option>`).join('')}</select></div></div>
+      <p class="hint">Set the selling price of each product for this counter. After you save, the counter shows the new price next time it loads.</p>
+    </div>
+    <div class="card"><h2>Photo prints</h2>
+      <table class="tbl"><thead><tr><th class="l">Size</th><th>Price ₹</th><th></th></tr></thead><tbody id="pPhoto"></tbody></table>
+      <button class="addline" id="pAddPhoto">+ Add size</button></div>
+    <div class="card"><h2>Items <span class="sub">— frames, keychains, magnets…</span></h2>
+      <table class="tbl"><thead><tr><th class="l">Item</th><th>Group</th><th>Price ₹</th><th></th></tr></thead><tbody id="pItems"></tbody></table>
+      <button class="addline" id="pAddItem">+ Add item</button></div>
+    <div class="actions"><button class="btn btn-save" id="pSave">Save prices to ${esc(SHOPS[priceShop].name)}</button></div>`;
+  const pb=$('#pPhoto');
+  pricePhotos.forEach((p,i)=>{const tr=el('tr');
+    tr.innerHTML=`<td><input class="pn" value="${esc(p.size)}" style="text-align:left"></td><td><input class="num" type="number" min="0" value="${p.rate||''}"></td><td><button class="x">×</button></td>`;
+    tr.querySelector('.pn').oninput=e=>p.size=e.target.value;
+    tr.querySelector('input[type=number]').oninput=e=>p.rate=num(e.target.value);
+    tr.querySelector('.x').onclick=()=>{pricePhotos.splice(i,1);drawPrices();};
+    pb.appendChild(tr);});
+  const ib=$('#pItems');
+  priceItems.forEach((it,i)=>{const tr=el('tr');
+    tr.innerHTML=`<td><input class="pn" value="${esc(it.name)}" style="text-align:left"></td><td><input class="pg" value="${esc(it.seg||'Other')}" style="text-align:left"></td><td><input class="num" type="number" min="0" value="${it.rate||''}"></td><td><button class="x">×</button></td>`;
+    tr.querySelector('.pn').oninput=e=>it.name=e.target.value;
+    tr.querySelector('.pg').oninput=e=>it.seg=e.target.value;
+    tr.querySelector('input[type=number]').oninput=e=>it.rate=num(e.target.value);
+    tr.querySelector('.x').onclick=()=>{priceItems.splice(i,1);drawPrices();};
+    ib.appendChild(tr);});
+  $('#priceShopSel').onchange=e=>{priceShop=e.target.value;renderPrices();};
+  $('#pAddPhoto').onclick=()=>{pricePhotos.push({size:'',rate:0});drawPrices();};
+  $('#pAddItem').onclick=()=>{priceItems.push({id:'x'+Date.now()+Math.floor(Math.random()*1000),seg:'Other',name:'',rate:0});drawPrices();};
+  $('#pSave').onclick=async()=>{
+    priceItems.forEach(it=>{if(!it.id)it.id='x'+Date.now()+Math.floor(Math.random()*1000);});
+    const cleanItems=priceItems.filter(it=>it.name.trim());
+    const cleanPhoto=pricePhotos.filter(p=>String(p.size).trim());
+    await saveShopData(priceShop,{items:cleanItems,photo:cleanPhoto});
+    toast('Prices saved to '+SHOPS[priceShop].name);
+  };
+}
+
+/* ---------- boot ---------- */
+(async function(){await detectRemote();const sess=await Store.get(SESSION);if(sess&&sess.id&&SHOPS[sess.id]){await enterShop(SHOPS[sess.id]);}})();
+</script>
+</body>
+</html>
