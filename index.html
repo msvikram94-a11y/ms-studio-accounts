@@ -113,6 +113,14 @@
   .btrack{flex:1;height:15px;background:#eef0f5;border-radius:8px;overflow:hidden}
   .bfill{display:block;height:100%;background:linear-gradient(90deg,#e79a26,#f0b24f);border-radius:8px}
   .bval{width:92px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+  /* in-page dialog (replaces browser prompt/confirm which are blocked in previews) */
+  .modal-bg{position:fixed;inset:0;background:rgba(10,12,18,.5);display:flex;align-items:center;justify-content:center;z-index:80;padding:20px}
+  .modal{background:#fff;border-radius:16px;padding:22px;max-width:360px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+  .modal h3{margin:0 0 12px;font-size:16px}
+  .modal .lbl{margin-top:8px}
+  .modal input{width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;background:#fbfcfe}
+  .modal input:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px rgba(231,154,38,.15)}
+  .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
   @media(max-width:620px){.summary{grid-template-columns:repeat(2,1fr)}.who .lbl2{display:none}}
   @media print{.topbar,.tabs,.no-print,.addline,.x{display:none !important}body{background:#fff}.card{box-shadow:none;border:1px solid #ccc}}
 </style>
@@ -174,18 +182,19 @@
 
     <!-- SHEET: team enters closing -->
     <div id="daySheet" class="hide">
+      <div style="margin-bottom:12px"><button class="btn-ghost" id="backToStock">← New stock / edit opening</button></div>
       <div class="card">
         <h2>Day details</h2>
         <div class="row">
           <div class="col"><label class="lbl">Date</label><input class="inp" type="date" id="entryDate"></div>
           <div class="col"><label class="lbl">Opening balance (₹)</label><input class="inp num" type="number" id="opening" placeholder="0"></div>
-          <div class="col"><label class="lbl">Sign / by</label><input class="inp" id="sign" placeholder="Name"></div>
+          <div class="col"><label class="lbl">Name / by</label><select class="inp" id="sign"></select></div>
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" id="photoCard">
         <h2>Photo prints <span class="sub">— enter print count from printer</span></h2>
-        <table class="tbl"><thead><tr><th class="l">Size</th><th>Price ₹</th><th>Print count</th><th style="text-align:right">Amount</th></tr></thead>
+        <table class="tbl"><thead><tr><th class="l">Size</th><th>Price ₹</th><th>Print count</th><th>Waste</th><th>Sold</th><th style="text-align:right">Amount</th></tr></thead>
           <tbody id="photoBody"></tbody></table>
       </div>
 
@@ -195,7 +204,6 @@
         <table class="tbl"><thead><tr>
           <th class="l">Item</th><th>Price ₹</th><th>Opening 🔒</th><th>Close</th><th>Waste</th><th>Sold</th><th style="text-align:right">Amount</th>
         </tr></thead><tbody id="stockBody"></tbody></table>
-        <button class="addline" id="addStockOwner">+ Add / edit stock (owner)</button>
       </div>
 
       <div class="card">
@@ -281,6 +289,17 @@
   <div id="adPrices" class="hide"></div>
 </main>
 
+<div id="modal" class="modal-bg hide">
+  <div class="modal">
+    <h3 id="mTitle"></h3>
+    <div id="mBody"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" id="mCancel">Cancel</button>
+      <button class="btn btn-save" id="mOk">OK</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -310,14 +329,14 @@ async function saveShopData(id,data){
 }
 const SHOPS={
   yercaud :{id:'yercaud', name:'Yercaud',  pass:'yercaudpass',  ready:true },
-  photobox:{id:'photobox',name:'Photobox', pass:'photoboxpass', ready:false},
-  pykara  :{id:'pykara',  name:'Pykara',   pass:'pykarapass',   ready:false},
-  ooty    :{id:'ooty',    name:'Ooty',     pass:'ootypass',     ready:false},
-  admin   :{id:'admin',   name:'Admin',    pass:'adminpass',    role:'admin'},
+  photobox:{id:'photobox',name:'Photobox', pass:'photoboxpass', ready:true },
+  pykara  :{id:'pykara',  name:'Pykara',   pass:'pykarapass',   ready:true },
+  ooty    :{id:'ooty',    name:'Ooty',     pass:'ootypass',     ready:true },
+  vikram  :{id:'vikram',  name:'Admin',    role:'admin', dynamicPass:true},
 };
 const SESSION='msacc_session';
 let KK=null;                                    // per-shop storage keys, set at login
-function shopKeys(id){const p='msacc_'+id+'_';return{entries:p+'entries',items:p+'items',photo:p+'photo'};}
+function shopKeys(id){const p='msacc_'+id+'_';return{entries:p+'entries',items:p+'items',photo:p+'photo',staff:p+'staff'};}
 
 /* default masters (editable) */
 const DEF_ITEMS=[
@@ -335,24 +354,89 @@ const DEF_ITEMS=[
 const DEF_PHOTO=[{size:'8x20',rate:500},{size:'8x12',rate:250},{size:'8x4',rate:0}];
 const DEF_EXP=['Tea','Sathiya','Akka','Less'];
 
+/* Photobox counter — Photos (print count) + Frames only */
+const DEF_ITEMS_PB=[
+  {id:'pb_f6x4',   seg:'Frames',name:'6x4 Frame',       rate:150},
+  {id:'pb_f6x10a', seg:'Frames',name:'6x10 Frame (300)',rate:300},
+  {id:'pb_f6x10b', seg:'Frames',name:'6x10 Frame (350)',rate:350},
+  {id:'pb_f6x10c', seg:'Frames',name:'6x10 Frame (450)',rate:450},
+  {id:'pb_f8x14a', seg:'Frames',name:'8x14 Frame (550)',rate:550},
+  {id:'pb_f8x14b', seg:'Frames',name:'8x14 Frame (800)',rate:800},
+];
+const DEF_PHOTO_PB=[{size:'6x4',rate:70},{size:'6x10',rate:150},{size:'8x14',rate:250}];
+
+/* Pykara counter — Frames, Keychains, Magnets (prices to be set) */
+const DEF_ITEMS_PY=[
+  {id:'py_f8x14_15',seg:'Frames',   name:'8x14 Frame (1.5 inch)',rate:600},
+  {id:'py_f8x14_1', seg:'Frames',   name:'8x14 Frame (1 inch)',  rate:350},
+  {id:'py_f6x10',   seg:'Frames',   name:'6x10 Frame',           rate:250},
+  {id:'py_f6x4',    seg:'Frames',   name:'6x4 Frame',            rate:130},
+  {id:'py_kround',  seg:'Keychains',name:'Waterproof Keychain',  rate:100},
+  {id:'py_kwood',   seg:'Keychains',name:'Wood Keychain',        rate:150},
+  {id:'py_mag',     seg:'Magnets',  name:'Magnet',               rate:250},
+  {id:'py_omag',    seg:'Magnets',  name:'Ooty Magnet',          rate:100},
+];
+const DEF_PHOTO_PY=[{size:'6x4',rate:70},{size:'6x10',rate:150},{size:'8x14',rate:300}];
+
+/* Ooty counter */
+const DEF_ITEMS_OO=[
+  {id:'oo_f6x4',   seg:'Frames',   name:'6x4 Frame',                    rate:130},
+  {id:'oo_f6x10',  seg:'Frames',   name:'6x10 Frame',                   rate:250},
+  {id:'oo_f8x12c', seg:'Frames',   name:'8x12 Frame (Chocolate)',       rate:350},
+  {id:'oo_f8x12k', seg:'Frames',   name:'8x12 Frame (Kitkat/Traditional)',rate:550},
+  {id:'oo_key',    seg:'Keychains',name:'Keychain',                     rate:100},
+  {id:'oo_mag',    seg:'Magnets',  name:'Magnet',                       rate:250},
+];
+const DEF_PHOTO_OO=[{size:'6x4',rate:70},{size:'6x10',rate:150},{size:'8x12',rate:250},{size:'8x20',rate:500}];
+
+/* per-counter default products (used until the counter has saved/synced data) */
+const DEFAULTS={
+  yercaud :{items:DEF_ITEMS,    photo:DEF_PHOTO},
+  photobox:{items:DEF_ITEMS_PB, photo:DEF_PHOTO_PB},
+  pykara  :{items:DEF_ITEMS_PY, photo:DEF_PHOTO_PY},
+  ooty    :{items:DEF_ITEMS_OO, photo:DEF_PHOTO_OO},
+};
+function defItems(id){return DEFAULTS[id]?JSON.parse(JSON.stringify(DEFAULTS[id].items)):[];}
+function defPhoto(id){return DEFAULTS[id]?JSON.parse(JSON.stringify(DEFAULTS[id].photo)):[];}
+
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s);
 const el=(t,c)=>{const e=document.createElement(t);if(c)e.className=c;return e;};
 const todayStr=()=>new Date().toLocaleDateString('en-CA');
+function ddmmyy(){const d=new Date();const D=String(d.getDate()).padStart(2,'0');const M=String(d.getMonth()+1).padStart(2,'0');const Y=String(d.getFullYear()).slice(-2);return D+M+Y;}
+function adminPass(){return 'Atta@'+ddmmyy();}
 const inr=n=>'₹'+(Number(n)||0).toLocaleString('en-IN',{maximumFractionDigits:2});
 const num=v=>{const n=parseFloat(v);return isFinite(n)?n:0;};
 const pretty=d=>{const[y,m,dd]=d.split('-');return new Date(y,m-1,dd).toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});};
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1900);}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+/* in-page dialogs (browser prompt/confirm are blocked in sandboxed previews) */
+function askText(opts){return new Promise(res=>{
+  $('#mTitle').textContent=opts.title||'';const body=$('#mBody');body.innerHTML='';const inputs={};
+  (opts.fields||[]).forEach(f=>{const lab=el('label','lbl');lab.textContent=f.label;body.appendChild(lab);
+    const inp=el('input');inp.type=f.type||'text';if(f.value!=null)inp.value=f.value;if(f.placeholder)inp.placeholder=f.placeholder;
+    body.appendChild(inp);inputs[f.key]=inp;});
+  $('#mOk').textContent=opts.okText||'OK';$('#modal').classList.remove('hide');
+  setTimeout(()=>{const first=body.querySelector('input');if(first)first.focus();},30);
+  function done(v){$('#modal').classList.add('hide');$('#mOk').onclick=null;$('#mCancel').onclick=null;res(v);}
+  $('#mOk').onclick=()=>{const out={};Object.keys(inputs).forEach(k=>out[k]=inputs[k].value);done(out);};
+  $('#mCancel').onclick=()=>done(null);
+});}
+function confirmBox(title,okText){return new Promise(res=>{
+  $('#mTitle').textContent=title;$('#mBody').innerHTML='';$('#mOk').textContent=okText||'Yes';$('#modal').classList.remove('hide');
+  function done(v){$('#modal').classList.add('hide');$('#mOk').onclick=null;$('#mCancel').onclick=null;res(v);}
+  $('#mOk').onclick=()=>done(true);$('#mCancel').onclick=()=>done(false);
+});}
 
 /* ---------- state ---------- */
-let shop=null, entries={}, items=[], photoSizes=[], draft=null;
+let shop=null, entries={}, items=[], photoSizes=[], draft=null, addedStaff=[];
 
 /* ---------- auth ---------- */
 $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();
   const u=$('#u').value.trim().toLowerCase(),p=$('#p').value;
   const s=SHOPS[u];
-  if(!s||s.pass!==p){$('#loginErr').textContent='Wrong login details.';return;}
+  const expected=s&&s.dynamicPass?adminPass():(s&&s.pass);
+  if(!s||p!==expected){$('#loginErr').textContent='Wrong login details.';return;}
   $('#loginErr').textContent='';await Store.set(SESSION,{id:s.id});await enterShop(s);});
 function doLogout(){Store.set(SESSION,null);shop=null;KK=null;
   $('#app').classList.add('hide');$('#notready').classList.add('hide');$('#login').classList.remove('hide');$('#u').value='';$('#p').value='';}
@@ -369,8 +453,9 @@ async function enterShop(s){
   $('#notready').classList.add('hide');$('#app').classList.remove('hide');
   const d=await loadShopData(s.id);
   entries=d.entries||{};
-  items=d.items||(s.id==='yercaud'?JSON.parse(JSON.stringify(DEF_ITEMS)):[]);
-  photoSizes=d.photo||(s.id==='yercaud'?JSON.parse(JSON.stringify(DEF_PHOTO)):[]);
+  items=d.items||defItems(s.id);
+  photoSizes=d.photo||defPhoto(s.id);
+  addedStaff=await Store.get(KK.staff)||[];
   loadDay(todayStr());
   $('#rFrom').value=firstOfMonth();$('#rTo').value=todayStr();
   renderHistory();
@@ -386,7 +471,7 @@ function prevClose(date,id){
 function blankDay(date){
   return{date,opened:false,opening:0,sign:'',cash:0,gpay:0,tea:0,less:0,
     o1:{amt:0,reason:''},o2:{amt:0,reason:''},notes:'',
-    photos:photoSizes.map(p=>({size:p.size,count:0})),
+    photos:photoSizes.map(p=>({size:p.size,count:0,waste:0})),
     stock:items.map(it=>({id:it.id,carried:prevClose(date,it.id),newStock:0,close:0,waste:0}))};
 }
 
@@ -395,17 +480,18 @@ function loadDay(date){
   if(entries[date]){draft=JSON.parse(JSON.stringify(entries[date]));
     if(draft.opened===undefined)draft.opened=true;        // days saved before the lock feature
     items.forEach(it=>{if(!draft.stock.find(s=>s.id===it.id))draft.stock.push({id:it.id,carried:prevClose(date,it.id),newStock:0,close:0,waste:0});});
-    photoSizes.forEach(p=>{if(!draft.photos.find(x=>x.size===p.size))draft.photos.push({size:p.size,count:0});});
+    photoSizes.forEach(p=>{if(!draft.photos.find(x=>x.size===p.size))draft.photos.push({size:p.size,count:0,waste:0});});
   } else draft=blankDay(date);
   draft.o1=draft.o1||{amt:0,reason:''};draft.o2=draft.o2||{amt:0,reason:''};
   $('#entryDate').value=draft.date;$('#gateDate').value=draft.date;
-  $('#opening').value=draft.opening||'';$('#sign').value=draft.sign||'';
+  $('#opening').value=draft.opening||'';renderSign();
   $('#cash').value=draft.cash||'';$('#gpay').value=draft.gpay||'';
   $('#tea').value=draft.tea||'';$('#less').value=draft.less||'';
   $('#o1amt').value=draft.o1.amt||'';$('#o1reason').value=draft.o1.reason||'';
   $('#o2amt').value=draft.o2.amt||'';$('#o2reason').value=draft.o2.reason||'';
   $('#notes').value=draft.notes||'';
   renderGate();renderPhotos();renderStock();recalc();
+  $('#photoCard').classList.toggle('hide',!photoSizes.length);
   showDayView(draft.opened?'sheet':'gate');
   switchTab('day');
 }
@@ -438,28 +524,27 @@ $('#openDay').addEventListener('click',async()=>{
   renderStock();recalc();showDayView('sheet');renderHistory();
   toast('Day opened — opening is now locked');
 });
-$('#addStockOwner').addEventListener('click',()=>{
-  const pw=prompt('Owner password to add or edit stock:');
-  if(pw===null)return;
-  if(pw!==shop.pass){toast('Wrong password');return;}
-  renderGate();showDayView('gate');
-});
+$('#backToStock').addEventListener('click',()=>{renderGate();showDayView('gate');});
 
 /* ---------- photos ---------- */
 function renderPhotos(){
   const b=$('#photoBody');b.innerHTML='';
   draft.photos.forEach(ph=>{
     const master=photoSizes.find(p=>p.size===ph.size)||{rate:0};
+    const sold=Math.max(0,num(ph.count)-num(ph.waste));
     const tr=el('tr');
     tr.innerHTML=`<td class="l">${esc(ph.size)}</td>
       <td class="num" style="font-weight:700;color:var(--amber-d)">${inr(master.rate)}</td>
       <td><input class="j-c num" type="number" min="0" value="${ph.count||''}"></td>
-      <td class="amt">${inr(num(ph.count)*num(master.rate))}</td>`;
-    tr.querySelector('.j-c').oninput=e=>{ph.count=num(e.target.value);recalc();renderPhotoAmt();};
+      <td><input class="j-pw num" type="number" min="0" value="${ph.waste||''}"></td>
+      <td class="diff j-ps">${sold}</td>
+      <td class="amt j-pa">${inr(sold*num(master.rate))}</td>`;
+    const upd=()=>{const sd=Math.max(0,num(ph.count)-num(ph.waste));tr.querySelector('.j-ps').textContent=sd;tr.querySelector('.j-pa').textContent=inr(sd*num(master.rate));recalc();};
+    tr.querySelector('.j-c').oninput=e=>{ph.count=num(e.target.value);upd();};
+    tr.querySelector('.j-pw').oninput=e=>{ph.waste=num(e.target.value);upd();};
     b.appendChild(tr);
   });
 }
-function renderPhotoAmt(){[...$('#photoBody').children].forEach((tr,i)=>{const ph=draft.photos[i];const m=photoSizes.find(p=>p.size===ph.size)||{rate:0};tr.querySelector('.amt').textContent=inr(num(ph.count)*num(m.rate));});}
 
 /* ---------- stock ---------- */
 function renderStock(){
@@ -484,10 +569,13 @@ function renderStock(){
     b.appendChild(tr);
   });
 }
-$('#addItem').addEventListener('click',()=>{
-  const name=prompt('Item name (e.g. 8x14 Frame)');if(!name)return;
-  const rate=num(prompt('Rate ₹',''));const seg=prompt('Group (Frames / Keychains / Magnets / Other)','Other')||'Other';
-  const id='x'+Date.now();items.push({id,seg,name,rate});
+$('#addItem').addEventListener('click',async()=>{
+  const r=await askText({title:'Add new item',okText:'Add',fields:[
+    {key:'name',label:'Item name',placeholder:'e.g. 8x14 Frame'},
+    {key:'seg',label:'Group',value:'Other',placeholder:'Frames / Keychains / Magnets / Other'},
+    {key:'rate',label:'Price ₹',type:'number'}]});
+  if(!r||!r.name.trim())return;
+  const id='x'+Date.now();items.push({id,seg:(r.seg||'Other').trim()||'Other',name:r.name.trim(),rate:num(r.rate)});
   draft.stock.push({id,carried:prevClose(draft.date,id),newStock:0,close:0,waste:0});renderGate();
 });
 
@@ -495,7 +583,26 @@ $('#addItem').addEventListener('click',()=>{
 
 /* ---------- header inputs ---------- */
 ['opening','cash','gpay','tea','less'].forEach(id=>{$('#'+id).addEventListener('input',e=>{draft[id]=num(e.target.value);recalc();});});
-$('#sign').addEventListener('input',e=>{draft.sign=e.target.value;});
+function staffList(){
+  const set=new Set();
+  Object.values(entries).forEach(e=>{if(e.sign&&String(e.sign).trim())set.add(String(e.sign).trim());});
+  addedStaff.forEach(n=>{if(n&&n.trim())set.add(n.trim());});
+  if(draft&&draft.sign&&String(draft.sign).trim())set.add(String(draft.sign).trim());
+  return [...set].sort((a,b)=>a.localeCompare(b));
+}
+function renderSign(){
+  const sel=$('#sign');const list=staffList();
+  sel.innerHTML=`<option value="">— select name —</option>`+
+    list.map(n=>`<option value="${esc(n)}" ${draft.sign===n?'selected':''}>${esc(n)}</option>`).join('')+
+    `<option value="__add__">➕ Add new name…</option>`;
+}
+$('#sign').addEventListener('change',async e=>{
+  if(e.target.value==='__add__'){
+    const r=await askText({title:'Add staff name',fields:[{key:'name',label:'Name',placeholder:'e.g. Sathiya'}],okText:'Add'});
+    if(r&&r.name.trim()){const nm=r.name.trim();if(!addedStaff.includes(nm))addedStaff.push(nm);await Store.set(KK.staff,addedStaff);draft.sign=nm;}
+    renderSign();
+  } else { draft.sign=e.target.value; }
+});
 $('#notes').addEventListener('input',e=>{draft.notes=e.target.value;});
 $('#o1amt').addEventListener('input',e=>{draft.o1.amt=num(e.target.value);recalc();});
 $('#o1reason').addEventListener('input',e=>{draft.o1.reason=e.target.value;});
@@ -507,7 +614,7 @@ $('#entryDate').addEventListener('change',e=>loadDay(e.target.value));
 const COUNTERS=['yercaud','photobox','pykara','ooty'];
 function soldInfo(day,its,ph){
   let photo=0,stockAmt=0,newStk=0;const rows=[];
-  (day.photos||[]).forEach(x=>{const m=(ph||[]).find(p=>p.size===x.size)||{rate:0};const rate=(x.rate!=null?num(x.rate):num(m.rate));const a=num(x.count)*rate;photo+=a;if(num(x.count))rows.push({name:'Photo '+x.size,qty:num(x.count),amt:a});});
+  (day.photos||[]).forEach(x=>{const m=(ph||[]).find(p=>p.size===x.size)||{rate:0};const rate=(x.rate!=null?num(x.rate):num(m.rate));const sold=Math.max(0,num(x.count)-num(x.waste));const a=sold*rate;photo+=a;if(sold)rows.push({name:'Photo '+x.size,qty:sold,amt:a});});
   (day.stock||[]).forEach(s=>{const it=(its||[]).find(i=>i.id===s.id);if(!it)return;newStk+=num(s.newStock);const open=num(s.carried)+num(s.newStock);const sold=Math.max(0,open-num(s.close)-num(s.waste));const rate=(s.rate!=null?num(s.rate):num(it.rate));const a=sold*rate;stockAmt+=a;if(sold)rows.push({name:it.name,qty:sold,amt:a});});
   const tea=num(day.tea),less=num(day.less),o1=num(day.o1&&day.o1.amt),o2=num(day.o2&&day.o2.amt);
   const exp=tea+less+o1+o2,cash=num(day.cash),gpay=num(day.gpay),gross=photo+stockAmt;
@@ -527,12 +634,16 @@ function recalc(){
     <div class="stat"><div class="k">Gross total</div><div class="v">${inr(c.gross)}</div></div>
     <div class="stat exp"><div class="k">Expenses</div><div class="v">${inr(c.exp)}</div></div>`;
   const ok=Math.abs(c.diff)<1;
+  const verdict = ok ? '✓ Tallied — cash & accounts match'
+    : (c.diff>0 ? 'SHORTAGE of '+inr(c.diff)+' — collected + expenses is less than sales'
+                : 'EXTRA of '+inr(-c.diff)+' — collected + expenses is more than sales');
   $('#reconBox').innerHTML=`
-    <div class="recon"><span>Gross sales</span><b>${inr(c.gross)}</b></div>
-    <div class="recon"><span>− Expenses (Tea + Less + Others)</span><b class="num">${inr(c.exp)}</b></div>
-    <div class="recon"><span>− Collected (Cash + GPay)</span><b class="num">${inr(c.collected)}</b></div>
-    <div class="recon big"><span>Difference</span><b>${inr(c.diff)}</b></div>
-    <div class="diffbox ${ok?'ok':'bad'}">${ok?'✓ Tallied — everything matches':'Off by '+inr(Math.abs(c.diff))+' — check the numbers'}</div>`;
+    <div class="recon"><span>Sales side (gross)</span><b>${inr(c.gross)}</b></div>
+    <div class="recon"><span>Accounts side — Collected (Cash+GPay)</span><b class="num">${inr(c.collected)}</b></div>
+    <div class="recon"><span>Accounts side — Expenses</span><b class="num">${inr(c.exp)}</b></div>
+    <div class="recon"><span>Accounts side total</span><b class="num">${inr(c.collected+c.exp)}</b></div>
+    <div class="recon big"><span>${c.diff>0?'Short by':(c.diff<0?'Extra by':'Difference')}</span><b style="color:${c.diff>0?'var(--red)':(c.diff<0?'var(--green)':'inherit')}">${inr(Math.abs(c.diff))}</b></div>
+    <div class="diffbox ${ok?'ok':'bad'}">${verdict}</div>`;
 }
 
 /* ---------- save / reset ---------- */
@@ -542,9 +653,9 @@ $('#saveDay').addEventListener('click',async()=>{
   await saveShopData(shop.id,{entries,items,photo:photoSizes});
   toast('Saved '+pretty(draft.date));renderHistory();
 });
-$('#clearDay').addEventListener('click',()=>{if(confirm("Clear today's closing entries? The locked opening stays as it is.")){
+$('#clearDay').addEventListener('click',async()=>{if(await confirmBox("Clear today's closing entries? The locked opening stays as it is.",'Clear')){
   draft.stock.forEach(s=>{s.close=0;s.waste=0;});
-  draft.photos.forEach(p=>p.count=0);
+  draft.photos.forEach(p=>{p.count=0;p.waste=0;});
   draft.cash=0;draft.gpay=0;draft.tea=0;draft.less=0;draft.o1={amt:0,reason:''};draft.o2={amt:0,reason:''};
   ['cash','gpay','tea','less','o1amt','o1reason','o2amt','o2reason'].forEach(id=>$('#'+id).value='');
   renderPhotos();renderStock();recalc();toast('Closing cleared');
@@ -560,7 +671,7 @@ function renderHistory(){
       <div class="hist-figs"><div class="fg">Cash<b>${inr(entries[d].cash)}</b></div><div class="fg">GPay<b>${inr(entries[d].gpay)}</b></div>
       <button class="btn-ghost j-open">Open</button><button class="x j-del">×</button></div>`;
     row.querySelector('.j-open').onclick=()=>loadDay(d);
-    row.querySelector('.j-del').onclick=async e=>{e.stopPropagation();if(confirm('Delete '+pretty(d)+'?')){delete entries[d];await saveShopData(shop.id,{entries});renderHistory();toast('Deleted');}};
+    row.querySelector('.j-del').onclick=async e=>{e.stopPropagation();if(await confirmBox('Delete '+pretty(d)+'?','Delete')){delete entries[d];await saveShopData(shop.id,{entries});renderHistory();toast('Deleted');}};
     list.appendChild(row);});
 }
 
@@ -573,7 +684,7 @@ function renderReport(){
   let G=0,N=0,P=0,ST=0,E=0,cash=0,gpay=0;const perItem={};
   days.forEach(d=>{const e=entries[d];const c=calc(e);G+=c.gross;N+=c.net;P+=c.photo;ST+=c.stock;E+=c.exp;cash+=num(e.cash);gpay+=num(e.gpay);
     e.stock.forEach(s=>{const it=items.find(i=>i.id===s.id);if(!it)return;const open=num(s.carried)+num(s.newStock);const sold=Math.max(0,open-num(s.close)-num(s.waste));const rate=(s.rate!=null?num(s.rate):num(it.rate));if(!perItem[it.name])perItem[it.name]={q:0,a:0};perItem[it.name].q+=sold;perItem[it.name].a+=sold*rate;});
-    e.photos.forEach(ph=>{const m=photoSizes.find(p=>p.size===ph.size)||{rate:0};const rate=(ph.rate!=null?num(ph.rate):num(m.rate));const nm='Photo '+ph.size;if(!perItem[nm])perItem[nm]={q:0,a:0};perItem[nm].q+=num(ph.count);perItem[nm].a+=num(ph.count)*rate;});});
+    e.photos.forEach(ph=>{const m=photoSizes.find(p=>p.size===ph.size)||{rate:0};const rate=(ph.rate!=null?num(ph.rate):num(m.rate));const sold=Math.max(0,num(ph.count)-num(ph.waste));const nm='Photo '+ph.size;if(!perItem[nm])perItem[nm]={q:0,a:0};perItem[nm].q+=sold;perItem[nm].a+=sold*rate;});});
   const items_rows=Object.entries(perItem).filter(([,v])=>v.q||v.a).sort((a,b)=>b[1].a-a[1].a).map(([n,v])=>`<tr><td>${esc(n)}</td><td class="n">${v.q}</td><td class="n">${inr(v.a)}</td></tr>`).join('');
   const day_rows=days.map(d=>{const c=calc(entries[d]);return`<tr><td>${pretty(d)}</td><td class="n">${inr(c.gross)}</td><td class="n">${inr(c.net)}</td><td class="n">${inr(num(entries[d].cash))}</td><td class="n">${inr(num(entries[d].gpay))}</td></tr>`;}).join('');
   out.innerHTML=`
@@ -594,7 +705,7 @@ $('#printReport').addEventListener('click',()=>{if(!$('#reportOut').innerHTML.tr
 $('#exportCsv').addEventListener('click',()=>{const days=inRange();if(!days.length){toast('Nothing to export');return;}
   let rows=[['Date','Section','Item','Open','Close','Waste','Sold/Count','Rate','Amount']];
   days.forEach(d=>{const e=entries[d];
-    e.photos.forEach(ph=>{const m=photoSizes.find(p=>p.size===ph.size)||{rate:0};const rate=(ph.rate!=null?num(ph.rate):num(m.rate));rows.push([d,'Photo',ph.size,'','','',ph.count,rate,num(ph.count)*rate]);});
+    e.photos.forEach(ph=>{const m=photoSizes.find(p=>p.size===ph.size)||{rate:0};const rate=(ph.rate!=null?num(ph.rate):num(m.rate));const sold=Math.max(0,num(ph.count)-num(ph.waste));rows.push([d,'Photo',ph.size,'','',ph.waste,sold,rate,sold*rate]);});
     e.stock.forEach(s=>{const it=items.find(i=>i.id===s.id);if(!it)return;const open=num(s.carried)+num(s.newStock);const sold=Math.max(0,open-num(s.close)-num(s.waste));const rate=(s.rate!=null?num(s.rate):num(it.rate));rows.push([d,it.seg,it.name,open,s.close,s.waste,sold,rate,sold*rate]);});
     [['Tea',num(e.tea)],['Less',num(e.less)],[(e.o1&&e.o1.reason)||'Others 1',num(e.o1&&e.o1.amt)],[(e.o2&&e.o2.reason)||'Others 2',num(e.o2&&e.o2.amt)]].forEach(([nm,amt])=>{if(amt)rows.push([d,'Expense',nm,'','','','','',amt]);});});
   const csv=rows.map(r=>r.map(c=>`"${String(c??'').replace(/"/g,'""')}"`).join(',')).join('\n');
@@ -641,29 +752,57 @@ async function renderAdmin(){
   for(const id of COUNTERS){
     const d=await loadShopData(id);
     const ents=d.entries||{};
-    const its=d.items||(id==='yercaud'?DEF_ITEMS:[]);
-    const ph=d.photo||(id==='yercaud'?DEF_PHOTO:[]);
+    const its=d.items||defItems(id);
+    const ph=d.photo||defPhoto(id);
     const e=ents[date];
-    per.push({id,name:SHOPS[id].name,e,info:e?soldInfo(e,its,ph):null});
+    per.push({id,name:SHOPS[id].name,e,ents,its,ph,info:e?soldInfo(e,its,ph):null});
   }
   const body=$('#adBody');
   if(!per.some(p=>p.info)){
     body.innerHTML=`<div class="card"><div class="empty"><b>No entries for ${pretty(date)}</b>No counter has saved this day yet. Save a day on a counter, then refresh here.</div></div>`;
     return;
   }
-  let totG=0,totExp=0,totCash=0,totGpay=0,totNew=0;const prod={};
+  const GST=0.18;
+  let totG=0,totExp=0,totCash=0,totGpay=0,totNew=0,totUnits=0;const prod={};
   per.forEach(p=>{if(!p.info)return;const i=p.info;totG+=i.gross;totExp+=i.exp;totCash+=i.cash;totGpay+=i.gpay;totNew+=i.newStk;
+    i.units=i.rows.reduce((a,r)=>a+r.qty,0);totUnits+=i.units;
     i.rows.forEach(r=>{if(!prod[r.name])prod[r.name]={q:0,a:0};prod[r.name].q+=r.qty;prod[r.name].a+=r.amt;});});
+  const totTax=totGpay*GST;
   const active=per.filter(p=>p.info&&p.info.gross>0).sort((a,b)=>b.info.gross-a.info.gross);
   const best=active[0];
+
+  /* staff accuracy across ALL saved days */
+  const staff={};
+  per.forEach(p=>{Object.values(p.ents||{}).forEach(day=>{
+    const nm=(day.sign&&String(day.sign).trim())||'(no name)';
+    const c=calcFull(day,p.its,p.ph);const ad=Math.abs(c.diff);
+    if(!staff[nm])staff[nm]={days:0,perfect:0,mistakes:0,err:0};
+    staff[nm].days++;staff[nm].err+=ad;if(ad<1)staff[nm].perfect++;else staff[nm].mistakes++;
+  });});
+  const named=Object.entries(staff).filter(([n])=>n!=='(no name)');
+  const bestStaff = named.length?named.slice().sort((a,b)=> b[1].perfect-a[1].perfect || a[1].err-b[1].err)[0]:null;
+  const worstStaff= named.length?named.slice().sort((a,b)=> b[1].mistakes-a[1].mistakes || b[1].err-a[1].err)[0]:null;
+  const staffRows=Object.entries(staff).sort((a,b)=>b[1].days-a[1].days).map(([n,v])=>{
+    const isBest=bestStaff&&n===bestStaff[0]&&v.mistakes<v.days;
+    const isWorst=worstStaff&&n===worstStaff[0]&&v.mistakes>0&&(!bestStaff||n!==bestStaff[0]);
+    const tag=isBest?' <span class="badge" style="background:var(--green);color:#fff">Most accurate</span>':(isWorst?' <span class="badge" style="background:var(--red);color:#fff">Most mistakes</span>':'');
+    return `<tr><td class="l">${esc(n)}${tag}</td><td class="n">${v.days}</td><td class="n">${v.perfect}</td><td class="n">${v.mistakes}</td><td class="n">${inr(v.err)}</td></tr>`;
+  }).join('');
+  const staffCallout=(bestStaff?`Most accurate: <b>${esc(bestStaff[0])}</b> — ${bestStaff[1].perfect} of ${bestStaff[1].days} days tallied perfectly. `:'')+
+    (worstStaff&&worstStaff[1].mistakes>0&&(!bestStaff||worstStaff[0]!==bestStaff[0])?`Most mistakes: <b>${esc(worstStaff[0])}</b> — ${worstStaff[1].mistakes} day(s) off, ${inr(worstStaff[1].err)} total difference.`:'');
 
   const cards=per.map(p=>{
     if(!p.info)return `<div class="cc off"><div class="ccn">${esc(p.name)}</div><div class="ccm" style="margin-top:8px">No entry for this day</div></div>`;
     const isBest=best&&p.id===best.id;
     return `<div class="cc ${isBest?'best':''}"><div class="ccn"><span>${esc(p.name)}</span>${isBest?'<span class="badge">Top</span>':''}</div>
       <div class="ccg">${inr(p.info.gross)}</div>
-      <div class="ccm">Cash ${inr(p.info.cash)} · GPay ${inr(p.info.gpay)}<br>New stock ${p.info.newStk} · Expenses ${inr(p.info.exp)}</div></div>`;
+      <div class="ccm">Cash ${inr(p.info.cash)} · GPay ${inr(p.info.gpay)}<br>GST 18% on GPay ${inr(p.info.gpay*GST)}<br>Products sold ${p.info.units} · New stock ${p.info.newStk}<br>Expenses ${inr(p.info.exp)}</div></div>`;
   }).join('');
+
+  const colRows=per.map(p=>{
+    if(!p.info)return `<tr><td class="l">${esc(p.name)}</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>`;
+    return `<tr><td class="l">${esc(p.name)}</td><td class="n">${inr(p.info.cash)}</td><td class="n">${inr(p.info.gpay)}</td><td class="n">${inr(p.info.gpay*GST)}</td><td class="n">${p.info.units}</td></tr>`;}).join('')
+    +`<tr style="border-top:2px solid var(--line)"><td class="l"><b>Total</b></td><td class="n"><b>${inr(totCash)}</b></td><td class="n"><b>${inr(totGpay)}</b></td><td class="n"><b>${inr(totTax)}</b></td><td class="n"><b>${totUnits}</b></td></tr>`;
 
   const share=per.filter(p=>p.info&&p.info.gross>0).map(p=>({label:p.name,value:p.info.gross,color:AD_COLORS[COUNTERS.indexOf(p.id)]}));
   const legend=share.map(s=>`<div class="li"><span class="sw" style="background:${s.color}"></span>${esc(s.label)} — <b>${inr(s.value)}</b> (${Math.round(s.value/totG*100)}%)</div>`).join('');
@@ -675,12 +814,23 @@ async function renderAdmin(){
     <div class="card"><h2>All counters <span class="sub">${pretty(date)}</span></h2>
       <div class="summary">
         <div class="stat sales"><div class="k">Total business</div><div class="v">${inr(totG)}</div></div>
-        <div class="stat cash"><div class="k">Cash</div><div class="v">${inr(totCash)}</div></div>
-        <div class="stat"><div class="k">GPay</div><div class="v">${inr(totGpay)}</div></div>
+        <div class="stat cash"><div class="k">Cash received</div><div class="v">${inr(totCash)}</div></div>
+        <div class="stat"><div class="k">GPay received</div><div class="v">${inr(totGpay)}</div></div>
+        <div class="stat exp"><div class="k">GST 18% on GPay</div><div class="v">${inr(totTax)}</div></div>
+        <div class="stat"><div class="k">Products sold</div><div class="v">${totUnits}</div></div>
         <div class="stat exp"><div class="k">Expenses</div><div class="v">${inr(totExp)}</div></div>
       </div>
       <div style="margin-top:12px;font-size:13.5px;color:var(--ink-2)">${best?`<b>${esc(best.name)}</b> performed best today with <b>${inr(best.info.gross)}</b>. Total new stock moved to counters: <b>${totNew}</b>.`:''}</div>
     </div>
+
+    <div class="card"><h2>Collections &amp; GST <span class="sub">— GST is 18% of the GPay amount only</span></h2>
+      <table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">Cash</th><th style="text-align:right">GPay</th><th style="text-align:right">GST 18% (GPay)</th><th style="text-align:right">Products sold</th></tr></thead>
+        <tbody>${colRows}</tbody></table></div>
+
+    <div class="card"><h2>Staff accuracy <span class="sub">— all saved days, by name</span></h2>
+      <div style="margin-bottom:10px;font-size:13.5px;color:var(--ink-2)">${staffCallout||'No named entries yet. Staff pick their name on the day sheet.'}</div>
+      <table class="tbl"><thead><tr><th class="l">Name</th><th style="text-align:right">Days</th><th style="text-align:right">Perfect</th><th style="text-align:right">Mistakes</th><th style="text-align:right">Total difference</th></tr></thead>
+        <tbody>${staffRows||`<tr><td colspan="5" style="padding:12px;color:var(--muted)">No saved days yet.</td></tr>`}</tbody></table></div>
 
     <div class="card"><h2>Each counter</h2><div class="ad-grid">${cards}</div></div>
 
@@ -693,7 +843,7 @@ async function renderAdmin(){
     <div class="row">
       <div class="col" style="min-width:260px"><div class="card"><h2>New stock taken today</h2>
         <table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">New units</th></tr></thead><tbody>${newRows}</tbody></table></div></div>
-      <div class="col" style="min-width:260px"><div class="card"><h2>Products sold</h2>
+      <div class="col" style="min-width:260px"><div class="card"><h2>Products sold (by item)</h2>
         <table class="tbl"><thead><tr><th class="l">Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Amount</th></tr></thead><tbody>${soldRows}</tbody></table></div></div>
     </div>`;
 }
@@ -713,8 +863,8 @@ document.querySelectorAll('[data-adtab]').forEach(b=>b.addEventListener('click',
 let priceShop='yercaud',priceItems=[],pricePhotos=[];
 async function renderPrices(){
   const d=await loadShopData(priceShop);
-  priceItems =(d.items&&d.items.length)?JSON.parse(JSON.stringify(d.items)) :(priceShop==='yercaud'?JSON.parse(JSON.stringify(DEF_ITEMS)):[]);
-  pricePhotos=(d.photo&&d.photo.length)?JSON.parse(JSON.stringify(d.photo)):(priceShop==='yercaud'?JSON.parse(JSON.stringify(DEF_PHOTO)):[]);
+  priceItems =(d.items&&d.items.length)?JSON.parse(JSON.stringify(d.items)) :defItems(priceShop);
+  pricePhotos=(d.photo&&d.photo.length)?JSON.parse(JSON.stringify(d.photo)):defPhoto(priceShop);
   drawPrices();
 }
 function drawPrices(){
