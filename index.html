@@ -121,6 +121,8 @@
   .modal input{width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;background:#fbfcfe}
   .modal input:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px rgba(231,154,38,.15)}
   .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+  /* blind-entry counters (e.g. Ooty): hide all money columns/cards from staff */
+  body.hide-money .col-money{display:none !important}
   @media(max-width:620px){.summary{grid-template-columns:repeat(2,1fr)}.who .lbl2{display:none}}
   @media print{.topbar,.tabs,.no-print,.addline,.x{display:none !important}body{background:#fff}.card{box-shadow:none;border:1px solid #ccc}}
 </style>
@@ -171,7 +173,7 @@
           <div class="col" style="max-width:220px"><label class="lbl">Date</label><input class="inp" type="date" id="gateDate"></div>
         </div>
         <table class="tbl"><thead><tr>
-          <th class="l">Item</th><th>Price ₹</th><th>Carried</th><th>+ New stock</th><th>Opening</th>
+          <th class="l">Item</th><th class="col-money">Price ₹</th><th>Carried</th><th>+ New stock</th><th>Opening</th>
         </tr></thead><tbody id="gateBody"></tbody></table>
         <button class="addline" id="addItem">+ Add new item</button>
         <div class="actions" style="margin-top:16px">
@@ -183,6 +185,7 @@
     <!-- SHEET: team enters closing -->
     <div id="daySheet" class="hide">
       <div style="margin-bottom:12px"><button class="btn-ghost" id="backToStock">← New stock / edit opening</button></div>
+      <div id="roBanner" class="hide" style="margin-bottom:12px;padding:10px 14px;border-radius:10px;background:#fff6e8;border:1px solid #f1dcae;color:#8a5a12;font-size:13px;font-weight:600">🔒 View only — you can edit today's or yesterday's sheet. Older days are locked.</div>
       <div class="card">
         <h2>Day details</h2>
         <div class="row">
@@ -194,7 +197,7 @@
 
       <div class="card" id="photoCard">
         <h2>Photo prints <span class="sub">— enter print count from printer</span></h2>
-        <table class="tbl"><thead><tr><th class="l">Size</th><th>Price ₹</th><th>Print count</th><th>Waste</th><th>Sold</th><th style="text-align:right">Amount</th></tr></thead>
+        <table class="tbl"><thead><tr><th class="l">Size</th><th class="col-money">Price ₹</th><th>Print count</th><th>Waste</th><th>Sold</th><th class="col-money" style="text-align:right">Amount</th></tr></thead>
           <tbody id="photoBody"></tbody></table>
       </div>
 
@@ -202,11 +205,11 @@
         <h2>Stock — enter closing <span class="sub">— Sold = Opening − Close − Waste</span></h2>
         <p class="hint">Opening is <b>locked</b> for the day. Enter today's <b>Close</b> and any <b>Waste</b>; sold &amp; amount fill in automatically.</p>
         <table class="tbl"><thead><tr>
-          <th class="l">Item</th><th>Price ₹</th><th>Opening 🔒</th><th>Close</th><th>Waste</th><th>Sold</th><th style="text-align:right">Amount</th>
+          <th class="l">Item</th><th class="col-money">Price ₹</th><th>Opening 🔒</th><th>Close</th><th>Waste</th><th>Sold</th><th class="col-money" style="text-align:right">Amount</th>
         </tr></thead><tbody id="stockBody"></tbody></table>
       </div>
 
-      <div class="card">
+      <div class="card col-money">
         <h2>Day totals</h2>
         <div class="summary" id="summary"></div>
       </div>
@@ -331,7 +334,7 @@ const SHOPS={
   yercaud :{id:'yercaud', name:'Yercaud',  pass:'yercaudpass',  ready:true },
   photobox:{id:'photobox',name:'Photobox', pass:'photoboxpass', ready:true },
   pykara  :{id:'pykara',  name:'Pykara',   pass:'pykarapass',   ready:true },
-  ooty    :{id:'ooty',    name:'Ooty',     pass:'ootypass',     ready:true },
+  ooty    :{id:'ooty',    name:'Ooty',     pass:'ootypass',     ready:true, hideAmounts:true },
   vikram  :{id:'vikram',  name:'Admin',    role:'admin', dynamicPass:true},
 };
 const SESSION='msacc_session';
@@ -384,6 +387,7 @@ const DEF_ITEMS_OO=[
   {id:'oo_f6x10',  seg:'Frames',   name:'6x10 Frame',                   rate:250},
   {id:'oo_f8x12c', seg:'Frames',   name:'8x12 Frame (Chocolate)',       rate:350},
   {id:'oo_f8x12k', seg:'Frames',   name:'8x12 Frame (Kitkat/Traditional)',rate:550},
+  {id:'oo_f8x20',  seg:'Frames',   name:'8x20 Frame',                   rate:1000},
   {id:'oo_key',    seg:'Keychains',name:'Keychain',                     rate:100},
   {id:'oo_mag',    seg:'Magnets',  name:'Magnet',                       rate:250},
 ];
@@ -403,6 +407,7 @@ function defPhoto(id){return DEFAULTS[id]?JSON.parse(JSON.stringify(DEFAULTS[id]
 const $=s=>document.querySelector(s);
 const el=(t,c)=>{const e=document.createElement(t);if(c)e.className=c;return e;};
 const todayStr=()=>new Date().toLocaleDateString('en-CA');
+function yesterdayStr(){const d=new Date();d.setDate(d.getDate()-1);return d.toLocaleDateString('en-CA');}
 function ddmmyy(){const d=new Date();const D=String(d.getDate()).padStart(2,'0');const M=String(d.getMonth()+1).padStart(2,'0');const Y=String(d.getFullYear()).slice(-2);return D+M+Y;}
 function adminPass(){return 'Atta@'+ddmmyy();}
 const inr=n=>'₹'+(Number(n)||0).toLocaleString('en-IN',{maximumFractionDigits:2});
@@ -438,14 +443,16 @@ $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();
   const expected=s&&s.dynamicPass?adminPass():(s&&s.pass);
   if(!s||p!==expected){$('#loginErr').textContent='Wrong login details.';return;}
   $('#loginErr').textContent='';await Store.set(SESSION,{id:s.id});await enterShop(s);});
-function doLogout(){Store.set(SESSION,null);shop=null;KK=null;
+function doLogout(){Store.set(SESSION,null);shop=null;KK=null;document.body.classList.remove('hide-money');
   $('#app').classList.add('hide');$('#notready').classList.add('hide');$('#login').classList.remove('hide');$('#u').value='';$('#p').value='';}
 $('#logoutBtn').addEventListener('click',doLogout);
 $('#nrLogout').addEventListener('click',doLogout);
 
 async function enterShop(s){
   shop=s;
+  document.body.classList.remove('hide-money');
   if(s.role==='admin'){await showAdmin();return;}
+  document.body.classList.toggle('hide-money',!!s.hideAmounts);
   KK=shopKeys(s.id);
   $('#login').classList.add('hide');
   $('#locTag').textContent=s.name;$('#whoName').textContent=s.name;$('#nrName').textContent=s.name;
@@ -493,11 +500,23 @@ function loadDay(date){
   renderGate();renderPhotos();renderStock();recalc();
   $('#photoCard').classList.toggle('hide',!photoSizes.length);
   showDayView(draft.opened?'sheet':'gate');
+  applyDateLock();
   switchTab('day');
 }
 function showDayView(which){
   $('#dayGate').classList.toggle('hide',which!=='gate');
   $('#daySheet').classList.toggle('hide',which!=='sheet');
+}
+/* staff may edit today or yesterday only; older days are view-only */
+function applyDateLock(){
+  const t=todayStr(),y=yesterdayStr();
+  $('#entryDate').min=y;$('#entryDate').max=t;$('#gateDate').min=y;$('#gateDate').max=t;
+  const editable=(draft.date===t||draft.date===y);
+  document.querySelectorAll('#daySheet input, #daySheet select, #daySheet button, #dayGate input, #dayGate select, #dayGate button').forEach(n=>{
+    if(n.id==='entryDate'||n.id==='gateDate')return;   // keep date navigation usable
+    n.disabled=!editable;
+  });
+  $('#roBanner').classList.toggle('hide',editable);
 }
 /* ---------- new-stock gate ---------- */
 function renderGate(){
@@ -508,7 +527,7 @@ function renderGate(){
     let s=draft.stock.find(x=>x.id===it.id);if(!s){s={id:it.id,carried:prevClose(draft.date,it.id),newStock:0,close:0,waste:0};draft.stock.push(s);}
     const tr=el('tr');
     tr.innerHTML=`<td class="l">${esc(it.name)}</td>
-      <td class="num" style="font-weight:700;color:var(--amber-d)">${inr(it.rate)}</td>
+      <td class="num col-money" style="font-weight:700;color:var(--amber-d)">${inr(it.rate)}</td>
       <td><span class="carry">${s.carried||0}</span></td>
       <td><input class="j-new num" type="number" min="0" value="${s.newStock||''}"></td>
       <td><b class="j-open num">${num(s.carried)+num(s.newStock)}</b></td>`;
@@ -521,7 +540,7 @@ $('#openDay').addEventListener('click',async()=>{
   draft.opened=true;draft.savedAt=new Date().toISOString();stampRates(draft);
   entries[draft.date]=JSON.parse(JSON.stringify(draft));
   await saveShopData(shop.id,{entries,items,photo:photoSizes});
-  renderStock();recalc();showDayView('sheet');renderHistory();
+  renderStock();recalc();showDayView('sheet');applyDateLock();renderHistory();
   toast('Day opened — opening is now locked');
 });
 $('#backToStock').addEventListener('click',()=>{renderGate();showDayView('gate');});
@@ -534,11 +553,11 @@ function renderPhotos(){
     const sold=Math.max(0,num(ph.count)-num(ph.waste));
     const tr=el('tr');
     tr.innerHTML=`<td class="l">${esc(ph.size)}</td>
-      <td class="num" style="font-weight:700;color:var(--amber-d)">${inr(master.rate)}</td>
+      <td class="num col-money" style="font-weight:700;color:var(--amber-d)">${inr(master.rate)}</td>
       <td><input class="j-c num" type="number" min="0" value="${ph.count||''}"></td>
       <td><input class="j-pw num" type="number" min="0" value="${ph.waste||''}"></td>
       <td class="diff j-ps">${sold}</td>
-      <td class="amt j-pa">${inr(sold*num(master.rate))}</td>`;
+      <td class="amt j-pa col-money">${inr(sold*num(master.rate))}</td>`;
     const upd=()=>{const sd=Math.max(0,num(ph.count)-num(ph.waste));tr.querySelector('.j-ps').textContent=sd;tr.querySelector('.j-pa').textContent=inr(sd*num(master.rate));recalc();};
     tr.querySelector('.j-c').oninput=e=>{ph.count=num(e.target.value);upd();};
     tr.querySelector('.j-pw').oninput=e=>{ph.waste=num(e.target.value);upd();};
@@ -556,12 +575,12 @@ function renderStock(){
     const open=num(s.carried)+num(s.newStock);const sold=Math.max(0,open-num(s.close)-num(s.waste));
     const rate=num(it.rate);const tr=el('tr');
     tr.innerHTML=`<td class="l">${esc(it.name)}</td>
-      <td class="num" style="font-weight:700;color:var(--amber-d)">${inr(rate)}</td>
+      <td class="num col-money" style="font-weight:700;color:var(--amber-d)">${inr(rate)}</td>
       <td><b class="j-open num" title="Carried ${s.carried||0} + New ${s.newStock||0}">${open}</b></td>
       <td><input class="j-cl num" type="number" min="0" value="${s.close||''}"></td>
       <td><input class="j-w num" type="number" min="0" value="${s.waste||''}"></td>
       <td class="diff j-sold">${sold}</td>
-      <td class="amt j-amt">${inr(sold*rate)}</td>`;
+      <td class="amt j-amt col-money">${inr(sold*rate)}</td>`;
     const upd=()=>{const o=num(s.carried)+num(s.newStock);const sd=Math.max(0,o-num(s.close)-num(s.waste));
       tr.querySelector('.j-sold').textContent=sd;tr.querySelector('.j-amt').textContent=inr(sd*num(it.rate));recalc();};
     tr.querySelector('.j-cl').oninput=e=>{s.close=num(e.target.value);upd();};
@@ -628,12 +647,16 @@ function stampRates(day){ // freeze today's prices onto the saved day
 }
 function recalc(){
   const c=calc(draft);
+  const ok=Math.abs(c.diff)<1;
+  if(shop&&shop.hideAmounts){  // blind-entry counter: only the verdict word
+    $('#reconBox').innerHTML=`<div class="diffbox ${ok?'ok':'bad'}" style="font-size:17px;padding:16px">${ok?'✓ CORRECT':(c.diff>0?'SHORTAGE':'EXTRA')}</div>`;
+    return;
+  }
   $('#summary').innerHTML=`
     <div class="stat sales"><div class="k">Photo sales</div><div class="v">${inr(c.photo)}</div></div>
     <div class="stat sales"><div class="k">Stock sales</div><div class="v">${inr(c.stock)}</div></div>
     <div class="stat"><div class="k">Gross total</div><div class="v">${inr(c.gross)}</div></div>
     <div class="stat exp"><div class="k">Expenses</div><div class="v">${inr(c.exp)}</div></div>`;
-  const ok=Math.abs(c.diff)<1;
   const verdict = ok ? '✓ Tallied — cash & accounts match'
     : (c.diff>0 ? 'SHORTAGE of '+inr(c.diff)+' — collected + expenses is less than sales'
                 : 'EXTRA of '+inr(-c.diff)+' — collected + expenses is more than sales');
