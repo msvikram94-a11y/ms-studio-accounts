@@ -245,10 +245,12 @@
 
       <div class="card">
         <label class="lbl">Notes</label><input class="inp" id="notes" placeholder="Anything to remember about today…">
-        <div class="actions" style="margin-top:14px">
+        <div class="actions" style="margin-top:14px;align-items:center">
           <button class="btn btn-save" id="saveDay">Save day</button>
           <button class="btn-ghost" id="clearDay">Reset closing</button>
+          <span id="saveStatus" style="color:var(--green);font-weight:700;font-size:13px"></span>
         </div>
+        <p class="hint" style="margin-top:8px">Your entries save automatically. The closing total carries to tomorrow's opening.</p>
       </div>
     </div>
   </section>
@@ -574,6 +576,7 @@ function renderGate(){
   items.forEach(it=>{
     if(it.seg!==seg){seg=it.seg;const sr=el('tr');sr.innerHTML=`<td colspan="5"><div class="seg">${esc(seg)}</div></td>`;b.appendChild(sr);}
     let s=draft.stock.find(x=>x.id===it.id);if(!s){s={id:it.id,carried:prevClose(draft.date,it.id),newStock:0,close:0,waste:0};draft.stock.push(s);}
+    if(!draft.opened)s.carried=prevClose(draft.date,it.id);   // refresh from latest previous close until the day is locked
     const tr=el('tr');
     tr.innerHTML=`<td class="l">${esc(it.name)}</td>
       <td class="num col-money" style="font-weight:700;color:var(--amber-d)">${inr(it.rate)}</td>
@@ -725,6 +728,21 @@ $('#saveDay').addEventListener('click',async()=>{
   await saveShopData(shop.id,{entries,items,photo:photoSizes});
   toast('Saved '+pretty(draft.date));renderHistory();
 });
+/* auto-save: every edit on the day sheet is persisted, so closing is never lost
+   and carries forward to the next day even if "Save day" isn't pressed */
+let _autosaveT=null;
+function autosaveDay(){
+  if(!draft||!shop||!draft.opened)return;
+  clearTimeout(_autosaveT);
+  _autosaveT=setTimeout(async()=>{
+    stampRates(draft);draft.savedAt=new Date().toISOString();
+    entries[draft.date]=JSON.parse(JSON.stringify(draft));
+    await saveShopData(shop.id,{entries});
+    const s=$('#saveStatus');if(s){s.textContent='Saved ✓';clearTimeout(s._t);s._t=setTimeout(()=>s.textContent='',2500);}
+  },1200);
+}
+$('#daySheet').addEventListener('input',autosaveDay);
+$('#daySheet').addEventListener('change',autosaveDay);
 $('#clearDay').addEventListener('click',async()=>{if(await confirmBox("Clear today's closing entries? The locked opening stays as it is.",'Clear')){
   draft.stock.forEach(s=>{s.close=0;s.waste=0;});
   draft.photos.forEach(p=>{p.count=0;p.waste=0;});
