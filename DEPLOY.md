@@ -14,7 +14,7 @@ api/save.js      ← saves a shop's data
 
 ## Logins
 - Counters: `yercaud` / `yercaudpass`, `photobox` / `photoboxpass`, `pykara` / `pykarapass`, `ooty` / `ootypass`
-- Admin dashboard: `admin` / `adminpass`
+- Admin dashboard: username `vikram`, password `Atta@DDMMYY` where DDMMYY is today's date (e.g. 30 Oct 2026 → `Atta@301026`). It changes with the date each day.
 (You can change any of these later in `index.html`, in the `SHOPS` section near the top of the script.)
 
 ---

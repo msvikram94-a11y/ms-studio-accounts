@@ -4,6 +4,11 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="description" content="MS Studio Accounts — counter daily accounts" />
+<meta name="theme-color" content="#171a21" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="MS Accounts" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon-192.png" />
 <title>MS Studio Accounts</title>
 <style>
   :root{
@@ -123,6 +128,9 @@
   .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
   /* blind-entry counters (e.g. Ooty): hide all money columns/cards from staff */
   body.hide-money .col-money{display:none !important}
+  /* store rooms: pure stock movement — no waste, no cash/expenses card */
+  body.storeroom .col-waste{display:none !important}
+  body.storeroom #collectCard{display:none !important}
   @media(max-width:620px){.summary{grid-template-columns:repeat(2,1fr)}.who .lbl2{display:none}}
   @media print{.topbar,.tabs,.no-print,.addline,.x{display:none !important}body{background:#fff}.card{box-shadow:none;border:1px solid #ccc}}
 </style>
@@ -197,15 +205,15 @@
 
       <div class="card" id="photoCard">
         <h2>Photo prints <span class="sub">— enter print count from printer</span></h2>
-        <table class="tbl"><thead><tr><th class="l">Size</th><th class="col-money">Price ₹</th><th>Print count</th><th>Waste</th><th>Sold</th><th class="col-money" style="text-align:right">Amount</th></tr></thead>
+        <table class="tbl"><thead><tr><th class="l">Size</th><th class="col-money">Price ₹</th><th>Print count</th><th class="col-waste">Waste</th><th>Sold</th><th class="col-money" style="text-align:right">Amount</th></tr></thead>
           <tbody id="photoBody"></tbody></table>
       </div>
 
-      <div class="card">
-        <h2>Stock — enter closing <span class="sub">— Sold = Opening − Close − Waste</span></h2>
-        <p class="hint">Opening is <b>locked</b> for the day. Enter today's <b>Close</b> and any <b>Waste</b>; sold &amp; amount fill in automatically.</p>
+      <div class="card" id="stockCard">
+        <h2 id="stockTitle">Stock — enter closing <span class="sub">— Sold = Opening − Close − Waste</span></h2>
+        <p class="hint" id="stockHint">Opening is <b>locked</b> for the day. Enter today's <b>Close</b> and any <b>Waste</b>; sold &amp; amount fill in automatically.</p>
         <table class="tbl"><thead><tr>
-          <th class="l">Item</th><th class="col-money">Price ₹</th><th>Opening 🔒</th><th>Close</th><th>Waste</th><th>Sold</th><th class="col-money" style="text-align:right">Amount</th>
+          <th class="l">Item</th><th class="col-money">Price ₹</th><th>Opening 🔒</th><th>Close</th><th class="col-waste">Waste</th><th id="soldTh">Sold</th><th class="col-money" style="text-align:right">Amount</th>
         </tr></thead><tbody id="stockBody"></tbody></table>
       </div>
 
@@ -214,7 +222,7 @@
         <div class="summary" id="summary"></div>
       </div>
 
-      <div class="card">
+      <div class="card" id="collectCard">
         <h2>Collection &amp; expenses</h2>
         <div class="row">
           <div class="col"><label class="lbl">Cash (₹)</label><input class="inp num" type="number" id="cash" placeholder="0"></div>
@@ -336,8 +344,11 @@ const SHOPS={
   photobox:{id:'photobox',name:'Photobox', pass:'photoboxpass', ready:true },
   pykara  :{id:'pykara',  name:'Pykara',   pass:'pykarapass',   ready:true },
   ooty    :{id:'ooty',    name:'Ooty',     pass:'ootypass',     ready:true, hideAmounts:true },
+  pykarasr:{id:'pykarasr',name:'Pykara Store Room', pass:'pykarasr', ready:true, storeroom:true, hideAmounts:true },
+  ootysr  :{id:'ootysr',  name:'Ooty Store Room',   pass:'ootysr',   ready:true, storeroom:true, hideAmounts:true },
   vikram  :{id:'vikram',  name:'Admin',    role:'admin', dynamicPass:true},
 };
+const EDITABLE=['yercaud','photobox','pykara','ooty','pykarasr','ootysr'];
 const SESSION='msacc_session';
 let KK=null;                                    // per-shop storage keys, set at login
 function shopKeys(id){const p='msacc_'+id+'_';return{entries:p+'entries',items:p+'items',photo:p+'photo',staff:p+'staff'};}
@@ -394,12 +405,26 @@ const DEF_ITEMS_OO=[
 ];
 const DEF_PHOTO_OO=[{size:'6x4',rate:70},{size:'6x10',rate:150},{size:'8x12',rate:250},{size:'8x20',rate:500}];
 
+/* Supplies tracked (open/close) in every counter and store room — not sold for money */
+const SUPPLIES=[
+  {id:'ink_c',seg:'Supplies',name:'Ink — Cyan (C)',   rate:0,supply:true},
+  {id:'ink_m',seg:'Supplies',name:'Ink — Magenta (M)',rate:0,supply:true},
+  {id:'ink_y',seg:'Supplies',name:'Ink — Yellow (Y)', rate:0,supply:true},
+  {id:'ink_k',seg:'Supplies',name:'Ink — Black (K)',  rate:0,supply:true},
+  {id:'roll6',seg:'Supplies',name:'Paper Roll 6 inch',rate:0,supply:true},
+  {id:'roll8',seg:'Supplies',name:'Paper Roll 8 inch',rate:0,supply:true},
+];
+const withSupplies=(arr)=>arr.concat(JSON.parse(JSON.stringify(SUPPLIES)));
+
 /* per-counter default products (used until the counter has saved/synced data) */
 const DEFAULTS={
-  yercaud :{items:DEF_ITEMS,    photo:DEF_PHOTO},
-  photobox:{items:DEF_ITEMS_PB, photo:DEF_PHOTO_PB},
-  pykara  :{items:DEF_ITEMS_PY, photo:DEF_PHOTO_PY},
-  ooty    :{items:DEF_ITEMS_OO, photo:DEF_PHOTO_OO},
+  yercaud :{items:withSupplies(DEF_ITEMS),    photo:DEF_PHOTO},
+  photobox:{items:withSupplies(DEF_ITEMS_PB), photo:DEF_PHOTO_PB},
+  pykara  :{items:withSupplies(DEF_ITEMS_PY), photo:DEF_PHOTO_PY},
+  ooty    :{items:withSupplies(DEF_ITEMS_OO), photo:DEF_PHOTO_OO},
+  /* store rooms — same stock as their counter + supplies, movement only (no money, no photos) */
+  pykarasr:{items:withSupplies(DEF_ITEMS_PY), photo:[]},
+  ootysr  :{items:withSupplies(DEF_ITEMS_OO), photo:[]},
 };
 function defItems(id){return DEFAULTS[id]?JSON.parse(JSON.stringify(DEFAULTS[id].items)):[];}
 function defPhoto(id){return DEFAULTS[id]?JSON.parse(JSON.stringify(DEFAULTS[id].photo)):[];}
@@ -444,19 +469,21 @@ $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();
   const expected=s&&s.dynamicPass?adminPass():(s&&s.pass);
   if(!s||p!==expected){$('#loginErr').textContent='Wrong login details.';return;}
   $('#loginErr').textContent='';await Store.set(SESSION,{id:s.id});await enterShop(s);});
-function doLogout(){Store.set(SESSION,null);shop=null;KK=null;document.body.classList.remove('hide-money');
+function doLogout(){Store.set(SESSION,null);shop=null;KK=null;document.body.classList.remove('hide-money','storeroom');
   $('#app').classList.add('hide');$('#notready').classList.add('hide');$('#login').classList.remove('hide');$('#u').value='';$('#p').value='';}
 $('#logoutBtn').addEventListener('click',async()=>{
-  if(adminMode){adminMode=false;$('#backToAdmin').classList.add('hide');$('#app').classList.add('hide');shop=SHOPS.vikram;await showAdmin();setAdTab('edit');return;}
+  if(adminMode){adminMode=false;$('#backToAdmin').classList.add('hide');$('#app').classList.add('hide');document.body.classList.remove('hide-money','storeroom');shop=SHOPS.vikram;await showAdmin();setAdTab('edit');return;}
   doLogout();
 });
 $('#nrLogout').addEventListener('click',doLogout);
 
 async function enterShop(s){
   shop=s;adminMode=false;
-  document.body.classList.remove('hide-money');$('#backToAdmin').classList.add('hide');
+  document.body.classList.remove('hide-money','storeroom');$('#backToAdmin').classList.add('hide');
   if(s.role==='admin'){await showAdmin();return;}
   document.body.classList.toggle('hide-money',!!s.hideAmounts);
+  document.body.classList.toggle('storeroom',!!s.storeroom);
+  applyStoreroomLabels(!!s.storeroom);
   KK=shopKeys(s.id);
   $('#login').classList.add('hide');
   $('#locTag').textContent=s.name;$('#whoName').textContent=s.name;$('#nrName').textContent=s.name;
@@ -473,6 +500,17 @@ async function enterShop(s){
   renderHistory();
 }
 function firstOfMonth(){const d=new Date();return new Date(d.getFullYear(),d.getMonth(),1).toLocaleDateString('en-CA');}
+function applyStoreroomLabels(isSR){
+  if(isSR){
+    $('#soldTh').textContent='Issued';
+    $('#stockTitle').innerHTML='Store room stock <span class="sub">— Issued = Opening − Close</span>';
+    $('#stockHint').innerHTML='Enter today\'s <b>Close</b> count. Issued (stock that left the store room) fills in automatically.';
+  } else {
+    $('#soldTh').textContent='Sold';
+    $('#stockTitle').innerHTML='Stock — enter closing <span class="sub">— Sold = Opening − Close − Waste</span>';
+    $('#stockHint').innerHTML='Opening is <b>locked</b> for the day. Enter today\'s <b>Close</b> and any <b>Waste</b>; sold &amp; amount fill in automatically.';
+  }
+}
 
 /* ---------- carry forward ---------- */
 function prevClose(date,id){
@@ -566,7 +604,7 @@ function renderPhotos(){
     tr.innerHTML=`<td class="l">${esc(ph.size)}</td>
       <td class="num col-money" style="font-weight:700;color:var(--amber-d)">${inr(master.rate)}</td>
       <td><input class="j-c num" type="number" min="0" value="${ph.count||''}"></td>
-      <td><input class="j-pw num" type="number" min="0" value="${ph.waste||''}"></td>
+      <td class="col-waste"><input class="j-pw num" type="number" min="0" value="${ph.waste||''}"></td>
       <td class="diff j-ps">${sold}</td>
       <td class="amt j-pa col-money">${inr(sold*num(master.rate))}</td>`;
     const upd=()=>{const sd=Math.max(0,num(ph.count)-num(ph.waste));tr.querySelector('.j-ps').textContent=sd;tr.querySelector('.j-pa').textContent=inr(sd*num(master.rate));recalc();};
@@ -589,7 +627,7 @@ function renderStock(){
       <td class="num col-money" style="font-weight:700;color:var(--amber-d)">${inr(rate)}</td>
       <td><b class="j-open num" title="Carried ${s.carried||0} + New ${s.newStock||0}">${open}</b></td>
       <td><input class="j-cl num" type="number" min="0" value="${s.close||''}"></td>
-      <td><input class="j-w num" type="number" min="0" value="${s.waste||''}"></td>
+      <td class="col-waste"><input class="j-w num" type="number" min="0" value="${s.waste||''}"></td>
       <td class="diff j-sold">${sold}</td>
       <td class="amt j-amt col-money">${inr(sold*rate)}</td>`;
     const upd=()=>{const o=num(s.carried)+num(s.newStock);const sd=Math.max(0,o-num(s.close)-num(s.waste));
@@ -645,7 +683,7 @@ const COUNTERS=['yercaud','photobox','pykara','ooty'];
 function soldInfo(day,its,ph){
   let photo=0,stockAmt=0,newStk=0;const rows=[];
   (day.photos||[]).forEach(x=>{const m=(ph||[]).find(p=>p.size===x.size)||{rate:0};const rate=(x.rate!=null?num(x.rate):num(m.rate));const sold=Math.max(0,num(x.count)-num(x.waste));const a=sold*rate;photo+=a;if(sold)rows.push({name:'Photo '+x.size,qty:sold,amt:a});});
-  (day.stock||[]).forEach(s=>{const it=(its||[]).find(i=>i.id===s.id);if(!it)return;newStk+=num(s.newStock);const open=num(s.carried)+num(s.newStock);const sold=Math.max(0,open-num(s.close)-num(s.waste));const rate=(s.rate!=null?num(s.rate):num(it.rate));const a=sold*rate;stockAmt+=a;if(sold)rows.push({name:it.name,qty:sold,amt:a});});
+  (day.stock||[]).forEach(s=>{const it=(its||[]).find(i=>i.id===s.id);if(!it)return;if(it.supply)return;newStk+=num(s.newStock);const open=num(s.carried)+num(s.newStock);const sold=Math.max(0,open-num(s.close)-num(s.waste));const rate=(s.rate!=null?num(s.rate):num(it.rate));const a=sold*rate;stockAmt+=a;if(sold)rows.push({name:it.name,qty:sold,amt:a});});
   const tea=num(day.tea),less=num(day.less),o1=num(day.o1&&day.o1.amt),o2=num(day.o2&&day.o2.amt);
   const exp=tea+less+o1+o2,cash=num(day.cash),gpay=num(day.gpay),gross=photo+stockAmt;
   return{photo,stock:stockAmt,gross,net:gross,exp,tea,less,o1,o2,cash,gpay,newStk,rows};
@@ -753,12 +791,15 @@ function switchTab(n){document.querySelectorAll('.tabs button').forEach(b=>b.cla
 
 /* ================= ADMIN DASHBOARD ================= */
 const AD_COLORS=['#e79a26','#3a6ea5','#12946a','#d15546'];
+let adminTimer=null;
 async function showAdmin(){
   $('#login').classList.add('hide');$('#app').classList.add('hide');$('#notready').classList.add('hide');
   $('#admin').classList.remove('hide');
   if(!$('#adDate').value)$('#adDate').value=todayStr();
   await renderAdmin();
   setAdTab('dash');
+  if(adminTimer)clearInterval(adminTimer);
+  adminTimer=setInterval(()=>{if(!$('#admin').classList.contains('hide')&&!$('#adBody').classList.contains('hide'))renderAdmin();},120000); // re-check stock every 2 min
 }
 $('#adLogout').addEventListener('click',()=>{$('#admin').classList.add('hide');doLogout();});
 $('#adRefresh').addEventListener('click',renderAdmin);
@@ -780,8 +821,56 @@ function barsH(data){ // [{label,value}]
     return `<div class="barrow"><span class="blabel">${esc(d.label)}</span><span class="btrack"><span class="bfill" style="width:${w}%"></span></span><span class="bval">${inr(d.value)}</span></div>`;}).join('')+`</div>`;
 }
 
+/* ----- low-stock emergency alerts ----- */
+function minFor(it){
+  if(it.supply)return 1;                 // ink + paper rolls: at least 1
+  if(it.seg==='Frames')return 25;
+  if(it.seg==='Magnets')return 50;
+  if(it.seg==='Keychains')return 50;
+  return null;                            // no threshold (Cup, Other, photos)
+}
+async function stockAlerts(){
+  const out=[];
+  for(const id of EDITABLE){
+    const d=await loadShopData(id);const ents=d.entries||{};const its=d.items||defItems(id);
+    const keys=Object.keys(ents).sort();if(!keys.length)continue;
+    const e=ents[keys[keys.length-1]];
+    const finished=num(e.cash)||num(e.gpay)||(e.stock||[]).some(s=>num(s.close)>0);
+    (e.stock||[]).forEach(s=>{const it=its.find(i=>i.id===s.id);if(!it)return;
+      const mn=minFor(it);if(mn==null)return;
+      const cur=finished?num(s.close):(num(s.carried)+num(s.newStock));
+      if(cur<mn)out.push({shop:SHOPS[id].name,item:it.name,cur,mn,asof:keys[keys.length-1]});
+    });
+  }
+  out.sort((a,b)=>(a.cur-a.mn)-(b.cur-b.mn));
+  return out;
+}
+function alertsCardHTML(alerts){
+  if(!alerts.length) return `<div class="card" style="border-color:#bfe6d2;background:#f2fbf6"><h2 style="color:var(--green)">✓ Stock levels OK</h2><div style="font-size:13.5px;color:var(--ink-2)">No counter or store room is below its minimum stock level right now.</div></div>`;
+  const rows=alerts.map(a=>`<tr><td class="l">${esc(a.shop)}</td><td class="l">${esc(a.item)}</td><td class="n" style="color:var(--red);font-weight:800">${a.cur}</td><td class="n">${a.mn}</td></tr>`).join('');
+  return `<div class="card" style="border:2px solid var(--red);background:#fdf1ef">
+    <h2 style="color:var(--red)">⚠ EMERGENCY — ${alerts.length} stock shortage${alerts.length>1?'s':''}</h2>
+    <div style="font-size:13px;color:var(--ink-2);margin-bottom:10px">These items are below the safe level and need restocking. <button class="btn-ghost" id="enableAlerts" style="margin-left:6px">🔔 Enable pop-up alerts</button></div>
+    <table class="tbl"><thead><tr><th class="l">Where</th><th class="l">Item</th><th style="text-align:right">In stock</th><th style="text-align:right">Minimum</th></tr></thead><tbody>${rows}</tbody></table>
+  </div>`;
+}
+function wireAlertButtons(alerts){
+  const b=$('#enableAlerts');if(b)b.onclick=async()=>{
+    if(!('Notification'in window)){toast('Pop-up alerts not supported on this device');return;}
+    const perm=await Notification.requestPermission();
+    if(perm==='granted'){toast('Alerts on — you\'ll be notified of shortages');fireAlertNotification(alerts);}
+    else toast('Allow notifications in your browser to get alerts');
+  };
+}
+function fireAlertNotification(alerts){
+  try{if(('Notification'in window)&&Notification.permission==='granted'&&alerts.length){
+    new Notification('MS Studio — stock shortage',{body:alerts.slice(0,5).map(a=>`${a.shop}: ${a.item} (${a.cur})`).join('\n')+(alerts.length>5?`\n+${alerts.length-5} more`:'')});
+  }}catch(e){}
+}
+
 async function renderAdmin(){
   const date=$('#adDate').value||todayStr();
+  const alerts=await stockAlerts();
   const per=[];
   for(const id of COUNTERS){
     const d=await loadShopData(id);
@@ -793,7 +882,8 @@ async function renderAdmin(){
   }
   const body=$('#adBody');
   if(!per.some(p=>p.info)){
-    body.innerHTML=`<div class="card"><div class="empty"><b>No entries for ${pretty(date)}</b>No counter has saved this day yet. Save a day on a counter, then refresh here.</div></div>`;
+    body.innerHTML=alertsCardHTML(alerts)+`<div class="card"><div class="empty"><b>No entries for ${pretty(date)}</b>No counter has saved this day yet. Save a day on a counter, then refresh here.</div></div>`;
+    wireAlertButtons(alerts);fireAlertNotification(alerts);
     return;
   }
   const GST=0.18;
@@ -844,7 +934,7 @@ async function renderAdmin(){
   const newRows=per.map(p=>`<tr><td class="l">${esc(p.name)}</td><td class="n">${p.info?p.info.newStk:'—'}</td></tr>`).join('');
   const soldRows=Object.entries(prod).sort((a,b)=>b[1].a-a[1].a).map(([n,v])=>`<tr><td class="l">${esc(n)}</td><td class="n">${v.q}</td><td class="n">${inr(v.a)}</td></tr>`).join('')||`<tr><td colspan="3" style="padding:12px;color:var(--muted)">Nothing sold this day.</td></tr>`;
 
-  body.innerHTML=`
+  body.innerHTML=alertsCardHTML(alerts)+`
     <div class="card"><h2>All counters <span class="sub">${pretty(date)}</span></h2>
       <div class="summary">
         <div class="stat sales"><div class="k">Total business</div><div class="v">${inr(totG)}</div></div>
@@ -880,6 +970,7 @@ async function renderAdmin(){
       <div class="col" style="min-width:260px"><div class="card"><h2>Products sold (by item)</h2>
         <table class="tbl"><thead><tr><th class="l">Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Amount</th></tr></thead><tbody>${soldRows}</tbody></table></div></div>
     </div>`;
+  wireAlertButtons(alerts);fireAlertNotification(alerts);
 }
 
 /* ---------- admin tabs ---------- */
@@ -901,8 +992,8 @@ function renderEditPicker(){
   w.innerHTML=`<div class="card"><h2>Edit a counter's accounts</h2>
     <p class="hint">Pick a counter and date, then open its day sheet to view or correct the entries. Changes save straight to that counter (and sync to every device).</p>
     <div class="row" style="align-items:flex-end">
-      <div class="col" style="max-width:260px"><label class="lbl">Counter</label>
-        <select class="inp" id="edShop">${COUNTERS.map(c=>`<option value="${c}">${esc(SHOPS[c].name)}</option>`).join('')}</select></div>
+      <div class="col" style="max-width:260px"><label class="lbl">Counter / store room</label>
+        <select class="inp" id="edShop">${EDITABLE.map(c=>`<option value="${c}">${esc(SHOPS[c].name)}</option>`).join('')}</select></div>
       <div class="col" style="max-width:200px"><label class="lbl">Date</label><input class="inp" type="date" id="edDate" value="${todayStr()}"></div>
       <div class="col" style="max-width:160px;display:flex;align-items:flex-end"><button class="btn btn-save" id="edOpen" style="flex:1">Open day</button></div>
     </div>
@@ -925,8 +1016,12 @@ async function listEditDays(){
   box.querySelectorAll('.ed-open').forEach(b=>b.onclick=()=>adminEditCounter(id,b.dataset.d));
 }
 async function adminEditCounter(id,date){
-  adminMode=true;shop=Object.assign({},SHOPS[id],{hideAmounts:false,ready:true});KK=shopKeys(id);
-  document.body.classList.remove('hide-money');
+  const isSR=!!SHOPS[id].storeroom;
+  adminMode=true;shop=Object.assign({},SHOPS[id],{hideAmounts:isSR,ready:true});KK=shopKeys(id);
+  document.body.classList.remove('hide-money','storeroom');
+  document.body.classList.toggle('hide-money',isSR);      // store rooms stay money-free even for admin
+  document.body.classList.toggle('storeroom',isSR);
+  applyStoreroomLabels(isSR);
   $('#admin').classList.add('hide');$('#notready').classList.add('hide');$('#app').classList.remove('hide');
   $('#appTabs').classList.remove('hide');         // admin keeps History/Report while editing
   $('#backToAdmin').classList.remove('hide');
@@ -942,6 +1037,7 @@ async function adminEditCounter(id,date){
 }
 $('#backToAdmin').addEventListener('click',async()=>{
   adminMode=false;$('#backToAdmin').classList.add('hide');$('#app').classList.add('hide');
+  document.body.classList.remove('hide-money','storeroom');
   shop=SHOPS.vikram;await showAdmin();setAdTab('edit');
 });
 
@@ -958,7 +1054,7 @@ function drawPrices(){
   w.innerHTML=`
     <div class="card no-print"><h2>Products &amp; prices</h2>
       <div class="row" style="margin-bottom:4px"><div class="col" style="max-width:260px"><label class="lbl">Counter</label>
-        <select class="inp" id="priceShopSel">${COUNTERS.map(c=>`<option value="${c}" ${c===priceShop?'selected':''}>${esc(SHOPS[c].name)}</option>`).join('')}</select></div></div>
+        <select class="inp" id="priceShopSel">${EDITABLE.map(c=>`<option value="${c}" ${c===priceShop?'selected':''}>${esc(SHOPS[c].name)}</option>`).join('')}</select></div></div>
       <p class="hint">Set the selling price of each product for this counter. After you save, the counter shows the new price next time it loads.</p>
     </div>
     <div class="card"><h2>Photo prints</h2>
@@ -997,6 +1093,8 @@ function drawPrices(){
 
 /* ---------- boot ---------- */
 (async function(){await detectRemote();const sess=await Store.get(SESSION);if(sess&&sess.id&&SHOPS[sess.id]){await enterShop(SHOPS[sess.id]);}})();
+/* PWA: register service worker so the app is installable on desktop & mobile */
+if('serviceWorker'in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{});});}
 </script>
 </body>
 </html>
