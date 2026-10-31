@@ -152,10 +152,10 @@
       <svg width="24" height="24" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="#171a21"/><g stroke="#e79a26" stroke-width="2.2" stroke-linecap="round" fill="none"><circle cx="22" cy="22" r="9.2"/><path d="M22 12.8 L27 21 M22 12.8 L17 21 M30 20 L21 21 M30 20 L26 28 M27 30.5 L23 23 M27 30.5 L18 29 M14 28.5 L23 23 M14 28.5 L18 20"/></g><circle cx="22" cy="22" r="3" fill="#e79a26"/></svg>
       <h1 style="margin:0;font-size:15px">MS Studio <span class="loc-tag" id="locTag">—</span></h1>
     </div>
-    <div class="who"><span class="lbl2">Counter:</span><b id="whoName">—</b><button class="btn-ghost" id="logoutBtn">Log out</button></div>
+    <div class="who"><button class="btn-ghost hide" id="backToAdmin" style="margin-right:6px">← Admin</button><span class="lbl2">Counter:</span><b id="whoName">—</b><button class="btn-ghost" id="logoutBtn">Log out</button></div>
   </div>
 
-  <div class="tabs">
+  <div class="tabs" id="appTabs">
     <button data-tab="day" class="active">Day Sheet</button>
     <button data-tab="history">History</button>
     <button data-tab="report">Report</button>
@@ -281,7 +281,7 @@
     </div>
     <div class="who"><button class="btn-ghost" id="adLogout">Log out</button></div>
   </div>
-  <div class="tabs" style="max-width:440px"><button data-adtab="dash" class="active">Dashboard</button><button data-adtab="prices">Products &amp; prices</button></div>
+  <div class="tabs" style="max-width:640px"><button data-adtab="dash" class="active">Dashboard</button><button data-adtab="edit">Edit accounts</button><button data-adtab="prices">Products &amp; prices</button></div>
   <div class="card no-print" id="adDateCard">
     <div class="row" style="align-items:flex-end">
       <div class="col" style="max-width:220px"><label class="lbl">Date</label><input class="inp" type="date" id="adDate"></div>
@@ -290,6 +290,7 @@
   </div>
   <div id="adBody"></div>
   <div id="adPrices" class="hide"></div>
+  <div id="adEdit" class="hide"></div>
 </main>
 
 <div id="modal" class="modal-bg hide">
@@ -434,7 +435,7 @@ function confirmBox(title,okText){return new Promise(res=>{
 });}
 
 /* ---------- state ---------- */
-let shop=null, entries={}, items=[], photoSizes=[], draft=null, addedStaff=[];
+let shop=null, entries={}, items=[], photoSizes=[], draft=null, addedStaff=[], adminMode=false;
 
 /* ---------- auth ---------- */
 $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();
@@ -445,12 +446,15 @@ $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();
   $('#loginErr').textContent='';await Store.set(SESSION,{id:s.id});await enterShop(s);});
 function doLogout(){Store.set(SESSION,null);shop=null;KK=null;document.body.classList.remove('hide-money');
   $('#app').classList.add('hide');$('#notready').classList.add('hide');$('#login').classList.remove('hide');$('#u').value='';$('#p').value='';}
-$('#logoutBtn').addEventListener('click',doLogout);
+$('#logoutBtn').addEventListener('click',async()=>{
+  if(adminMode){adminMode=false;$('#backToAdmin').classList.add('hide');$('#app').classList.add('hide');shop=SHOPS.vikram;await showAdmin();setAdTab('edit');return;}
+  doLogout();
+});
 $('#nrLogout').addEventListener('click',doLogout);
 
 async function enterShop(s){
-  shop=s;
-  document.body.classList.remove('hide-money');
+  shop=s;adminMode=false;
+  document.body.classList.remove('hide-money');$('#backToAdmin').classList.add('hide');
   if(s.role==='admin'){await showAdmin();return;}
   document.body.classList.toggle('hide-money',!!s.hideAmounts);
   KK=shopKeys(s.id);
@@ -458,6 +462,7 @@ async function enterShop(s){
   $('#locTag').textContent=s.name;$('#whoName').textContent=s.name;$('#nrName').textContent=s.name;
   if(!s.ready){$('#app').classList.add('hide');$('#notready').classList.remove('hide');return;}
   $('#notready').classList.add('hide');$('#app').classList.remove('hide');
+  $('#appTabs').classList.add('hide');            // staff: no History/Report, just the day sheet
   const d=await loadShopData(s.id);
   entries=d.entries||{};
   items=d.items||defItems(s.id);
@@ -509,6 +514,12 @@ function showDayView(which){
 }
 /* staff may edit today or yesterday only; older days are view-only */
 function applyDateLock(){
+  if(adminMode){ // admin can edit any date
+    $('#entryDate').removeAttribute('min');$('#entryDate').removeAttribute('max');
+    $('#gateDate').removeAttribute('min');$('#gateDate').removeAttribute('max');
+    document.querySelectorAll('#daySheet input, #daySheet select, #daySheet button, #dayGate input, #dayGate select, #dayGate button').forEach(n=>n.disabled=false);
+    $('#roBanner').classList.add('hide');return;
+  }
   const t=todayStr(),y=yesterdayStr();
   $('#entryDate').min=y;$('#entryDate').max=t;$('#gateDate').min=y;$('#gateDate').max=t;
   const editable=(draft.date===t||draft.date===y);
@@ -877,10 +888,62 @@ function setAdTab(n){
   const dash=n==='dash';
   $('#adDateCard').classList.toggle('hide',!dash);
   $('#adBody').classList.toggle('hide',!dash);
-  $('#adPrices').classList.toggle('hide',dash);
-  if(!dash)renderPrices();
+  $('#adPrices').classList.toggle('hide',n!=='prices');
+  $('#adEdit').classList.toggle('hide',n!=='edit');
+  if(n==='prices')renderPrices();
+  if(n==='edit')renderEditPicker();
 }
 document.querySelectorAll('[data-adtab]').forEach(b=>b.addEventListener('click',()=>setAdTab(b.dataset.adtab)));
+
+/* ---------- admin: open a counter's day to edit ---------- */
+function renderEditPicker(){
+  const w=$('#adEdit');
+  w.innerHTML=`<div class="card"><h2>Edit a counter's accounts</h2>
+    <p class="hint">Pick a counter and date, then open its day sheet to view or correct the entries. Changes save straight to that counter (and sync to every device).</p>
+    <div class="row" style="align-items:flex-end">
+      <div class="col" style="max-width:260px"><label class="lbl">Counter</label>
+        <select class="inp" id="edShop">${COUNTERS.map(c=>`<option value="${c}">${esc(SHOPS[c].name)}</option>`).join('')}</select></div>
+      <div class="col" style="max-width:200px"><label class="lbl">Date</label><input class="inp" type="date" id="edDate" value="${todayStr()}"></div>
+      <div class="col" style="max-width:160px;display:flex;align-items:flex-end"><button class="btn btn-save" id="edOpen" style="flex:1">Open day</button></div>
+    </div>
+    <div id="edDays" style="margin-top:16px"></div>
+  </div>`;
+  $('#edShop').onchange=listEditDays;
+  $('#edOpen').onclick=()=>adminEditCounter($('#edShop').value,$('#edDate').value||todayStr());
+  listEditDays();
+}
+async function listEditDays(){
+  const id=$('#edShop').value;const d=await loadShopData(id);const ents=d.entries||{};
+  const its=d.items||defItems(id),ph=d.photo||defPhoto(id);
+  const keys=Object.keys(ents).sort().reverse();
+  const box=$('#edDays');
+  if(!keys.length){box.innerHTML=`<div class="empty" style="padding:18px"><b>No saved days for ${esc(SHOPS[id].name)}</b>Pick a date above and open it to start.</div>`;return;}
+  box.innerHTML=`<label class="lbl">Saved days — tap to edit</label>`+keys.map(dt=>{
+    const c=calcFull(ents[dt],its,ph);
+    return `<div class="hist-item"><div class="hist-date">${pretty(dt)}<small>Gross ${inr(c.gross)} · ${c.diff>0?'Short '+inr(c.diff):(c.diff<0?'Extra '+inr(-c.diff):'Tallied')}</small></div>
+      <button class="btn-ghost ed-open" data-d="${dt}">Edit</button></div>`;}).join('');
+  box.querySelectorAll('.ed-open').forEach(b=>b.onclick=()=>adminEditCounter(id,b.dataset.d));
+}
+async function adminEditCounter(id,date){
+  adminMode=true;shop=Object.assign({},SHOPS[id],{hideAmounts:false,ready:true});KK=shopKeys(id);
+  document.body.classList.remove('hide-money');
+  $('#admin').classList.add('hide');$('#notready').classList.add('hide');$('#app').classList.remove('hide');
+  $('#appTabs').classList.remove('hide');         // admin keeps History/Report while editing
+  $('#backToAdmin').classList.remove('hide');
+  $('#locTag').textContent=SHOPS[id].name+' (admin edit)';$('#whoName').textContent='Admin';
+  const d=await loadShopData(id);
+  entries=d.entries||{};
+  items=d.items||defItems(id);
+  photoSizes=d.photo||defPhoto(id);
+  addedStaff=await Store.get(KK.staff)||[];
+  loadDay(date);
+  $('#rFrom').value=firstOfMonth();$('#rTo').value=todayStr();
+  renderHistory();
+}
+$('#backToAdmin').addEventListener('click',async()=>{
+  adminMode=false;$('#backToAdmin').classList.add('hide');$('#app').classList.add('hide');
+  shop=SHOPS.vikram;await showAdmin();setAdTab('edit');
+});
 
 /* ---------- admin price editor ---------- */
 let priceShop='yercaud',priceItems=[],pricePhotos=[];
