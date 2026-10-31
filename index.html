@@ -534,6 +534,9 @@ function loadDay(date){
     items.forEach(it=>{if(!draft.stock.find(s=>s.id===it.id))draft.stock.push({id:it.id,carried:prevClose(date,it.id),newStock:0,close:0,waste:0});});
     photoSizes.forEach(p=>{if(!draft.photos.find(x=>x.size===p.size))draft.photos.push({size:p.size,count:0,waste:0});});
   } else draft=blankDay(date);
+  // Opening ALWAYS = previous day's closing (+ any new stock). Re-derive every load so a
+  // corrected previous-day closing flows straight into this day's opening.
+  draft.stock.forEach(s=>{s.carried=prevClose(date,s.id);});
   draft.o1=draft.o1||{amt:0,reason:''};draft.o2=draft.o2||{amt:0,reason:''};
   $('#entryDate').value=draft.date;$('#gateDate').value=draft.date;
   $('#opening').value=draft.opening||'';renderSign();
@@ -576,7 +579,7 @@ function renderGate(){
   items.forEach(it=>{
     if(it.seg!==seg){seg=it.seg;const sr=el('tr');sr.innerHTML=`<td colspan="5"><div class="seg">${esc(seg)}</div></td>`;b.appendChild(sr);}
     let s=draft.stock.find(x=>x.id===it.id);if(!s){s={id:it.id,carried:prevClose(draft.date,it.id),newStock:0,close:0,waste:0};draft.stock.push(s);}
-    if(!draft.opened)s.carried=prevClose(draft.date,it.id);   // refresh from latest previous close until the day is locked
+    s.carried=prevClose(draft.date,it.id);   // opening always tracks the latest previous close
     const tr=el('tr');
     tr.innerHTML=`<td class="l">${esc(it.name)}</td>
       <td class="num col-money" style="font-weight:700;color:var(--amber-d)">${inr(it.rate)}</td>
