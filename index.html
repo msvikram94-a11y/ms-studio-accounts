@@ -252,6 +252,11 @@
         </div>
         <p class="hint" style="margin-top:8px">Your entries save automatically. The closing total carries to tomorrow's opening.</p>
       </div>
+
+      <div class="card" id="staffTallyCard">
+        <h2>Your tally record <span class="sub">— extra / shortage till today</span></h2>
+        <div id="staffTally"></div>
+      </div>
     </div>
   </section>
 
@@ -552,7 +557,28 @@ function loadDay(date){
   $('#photoCard').classList.toggle('hide',!photoSizes.length);
   showDayView(draft.opened?'sheet':'gate');
   applyDateLock();
+  renderStaffTally();
   switchTab('day');
+}
+function renderStaffTally(){
+  const box=$('#staffTally');if(!box)return;
+  const blind=!!(shop&&shop.hideAmounts);
+  const dates=Object.keys(entries).filter(dt=>(entries[dt].stock||[]).every(s=>hasClose(s.close))).sort();
+  if(!dates.length){box.innerHTML=`<div class="empty" style="padding:16px">No completed days yet. Finish a day's closing to start the record.</div>`;return;}
+  let running=0,exDays=0,shDays=0;
+  const rows=dates.slice().reverse().map(dt=>{
+    const c=calcFull(entries[dt],items,photoSizes);const nd=c.diff;const abs=Math.abs(nd);
+    const status=abs<1?'<span style="color:var(--green);font-weight:700">Correct</span>':(nd>0?'<span style="color:var(--red);font-weight:700">Shortage</span>':'<span style="color:var(--green);font-weight:700">Extra</span>');
+    return {dt,nd,abs,status};
+  });
+  dates.forEach(dt=>{const nd=calcFull(entries[dt],items,photoSizes).diff;running+=nd;if(nd>1)shDays++;else if(nd<-1)exDays++;});
+  const overall=running;
+  const overallLabel=blind
+    ? (overall>0?`<b style="color:var(--red)">More shortage overall</b> (${shDays} short / ${exDays} extra days)`:(overall<0?`<b style="color:var(--green)">More extra overall</b> (${exDays} extra / ${shDays} short days)`:'<b>Balanced overall</b>'))
+    : (overall>0?`<b style="color:var(--red)">SHORTAGE of ${inr(overall)}</b> till today`:(overall<0?`<b style="color:var(--green)">EXTRA of ${inr(-overall)}</b> till today`:'<b>Perfectly tallied</b> till today'));
+  const bodyRows=rows.map(r=>`<tr><td class="l">${pretty(r.dt)}</td><td class="n">${r.status}</td>${blind?'':`<td class="n">${r.abs<1?'—':inr(r.abs)}</td>`}</tr>`).join('');
+  box.innerHTML=`<div style="margin-bottom:10px;font-size:14px">${overallLabel}</div>
+    <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Date</th><th style="text-align:right">Result</th>${blind?'':'<th style="text-align:right">Difference</th>'}</tr></thead><tbody>${bodyRows}</tbody></table></div>`;
 }
 function showDayView(which){
   $('#dayGate').classList.toggle('hide',which!=='gate');
@@ -753,7 +779,7 @@ $('#saveDay').addEventListener('click',async()=>{
   draft.finalized=true;draft.savedAt=new Date().toISOString();stampRates(draft);
   entries[draft.date]=JSON.parse(JSON.stringify(draft));
   await saveShopData(shop.id,{entries,items,photo:photoSizes});
-  toast('Accounts closed & saved — '+pretty(draft.date));renderHistory();
+  toast('Accounts closed & saved — '+pretty(draft.date));renderHistory();renderStaffTally();
 });
 /* auto-save: every edit on the day sheet is persisted, so closing is never lost
    and carries forward to the next day even if "Save day" isn't pressed */
@@ -979,6 +1005,41 @@ async function renderAdmin(){
   const newRows=per.map(p=>`<tr><td class="l">${esc(p.name)}</td><td class="n">${p.info?p.info.newStk:'—'}</td></tr>`).join('');
   const soldRows=Object.entries(prod).sort((a,b)=>b[1].a-a[1].a).map(([n,v])=>`<tr><td class="l">${esc(n)}</td><td class="n">${v.q}</td><td class="n">${inr(v.a)}</td></tr>`).join('')||`<tr><td colspan="3" style="padding:12px;color:var(--muted)">Nothing sold this day.</td></tr>`;
 
+  /* ---- product × counter matrix (selected date) ---- */
+  const matProducts={};
+  per.forEach(p=>{if(!p.info)return;p.info.rows.forEach(r=>{if(!matProducts[r.name])matProducts[r.name]={};matProducts[r.name][p.id]=(matProducts[r.name][p.id]||0)+r.qty;});});
+  const matHead=COUNTERS.map(id=>`<th style="text-align:right">${esc(SHOPS[id].name)}</th>`).join('');
+  const matRows=Object.keys(matProducts).sort().map(nm=>{
+    const row=matProducts[nm];let maxId=null,maxQ=-1;
+    COUNTERS.forEach(id=>{const q=row[id]||0;if(q>maxQ){maxQ=q;maxId=id;}});
+    const cells=COUNTERS.map(id=>{const q=row[id]||0;const hi=(q>0&&id===maxId);return `<td class="n" style="${hi?'background:#fff6e8;font-weight:800;color:var(--amber-d)':''}">${q||'—'}</td>`;}).join('');
+    return `<tr><td class="l">${esc(nm)}</td>${cells}<td class="l" style="font-weight:700">${maxQ>0?esc(SHOPS[maxId].name):'—'}</td></tr>`;
+  }).join('')||`<tr><td colspan="${COUNTERS.length+2}" style="padding:12px;color:var(--muted)">Nothing sold on this day.</td></tr>`;
+
+  /* ---- extra / shortage ledger (cumulative, all counters, complete days only) ---- */
+  const dayDiff={};
+  per.forEach(p=>{Object.keys(p.ents||{}).forEach(dt=>{const e=p.ents[dt];if(!(e.stock||[]).every(s=>hasClose(s.close)))return;dayDiff[dt]=(dayDiff[dt]||0)+calcFull(e,p.its,p.ph).diff;});});
+  const esDates=Object.keys(dayDiff).sort();let running=0;
+  const esRows=esDates.map(dt=>{const nd=dayDiff[dt];running+=nd;const sh=nd>0?nd:0,ex=nd<0?-nd:0;
+    return `<tr><td class="l">${pretty(dt)}</td><td class="n" style="color:var(--red)">${sh?inr(sh):'—'}</td><td class="n" style="color:var(--green)">${ex?inr(ex):'—'}</td><td class="n">${running>0?'Short '+inr(running):(running<0?'Extra '+inr(-running):'Nil')}</td></tr>`;}).join('')||`<tr><td colspan="4" style="padding:12px;color:var(--muted)">No completed days yet.</td></tr>`;
+  const esOverall=running;
+  const esBadge=esOverall>0?`<span style="color:var(--red);font-weight:800">SHORTAGE of ${inr(esOverall)}</span>`:(esOverall<0?`<span style="color:var(--green);font-weight:800">EXTRA of ${inr(-esOverall)}</span>`:'<b>Perfectly tallied</b>');
+
+  /* ---- waste record (cumulative) ---- */
+  const wasteT={pr:0,fr:0,mg:0,kc:0};const wastePer={};
+  per.forEach(p=>{let pr=0,fr=0,mg=0,kc=0;Object.values(p.ents||{}).forEach(e=>{
+    (e.photos||[]).forEach(x=>pr+=num(x.waste));
+    (e.stock||[]).forEach(s=>{const it=p.its.find(i=>i.id===s.id);if(!it)return;const w=num(s.waste);if(it.seg==='Frames')fr+=w;else if(it.seg==='Magnets')mg+=w;else if(it.seg==='Keychains')kc+=w;});
+  });wastePer[p.id]={pr,fr,mg,kc};wasteT.pr+=pr;wasteT.fr+=fr;wasteT.mg+=mg;wasteT.kc+=kc;});
+  const wasteRows=per.map(p=>{const w=wastePer[p.id]||{pr:0,fr:0,mg:0,kc:0};return `<tr><td class="l">${esc(p.name)}</td><td class="n">${w.pr}</td><td class="n">${w.fr}</td><td class="n">${w.mg}</td><td class="n">${w.kc}</td></tr>`;}).join('')
+    +`<tr style="border-top:2px solid var(--line)"><td class="l"><b>Total</b></td><td class="n"><b>${wasteT.pr}</b></td><td class="n"><b>${wasteT.fr}</b></td><td class="n"><b>${wasteT.mg}</b></td><td class="n"><b>${wasteT.kc}</b></td></tr>`;
+
+  /* ---- tea expense tracker ---- */
+  let teaToday=0,teaTotal=0;const teaPer={};
+  per.forEach(p=>{let tot=0;Object.values(p.ents||{}).forEach(e=>tot+=num(e.tea));teaPer[p.id]=tot;teaTotal+=tot;teaToday+=num(p.e&&p.e.tea);});
+  const teaRows=per.map(p=>`<tr><td class="l">${esc(p.name)}</td><td class="n">${inr(num(p.e&&p.e.tea))}</td><td class="n">${inr(teaPer[p.id]||0)}</td></tr>`).join('')
+    +`<tr style="border-top:2px solid var(--line)"><td class="l"><b>Total</b></td><td class="n"><b>${inr(teaToday)}</b></td><td class="n"><b>${inr(teaTotal)}</b></td></tr>`;
+
   body.innerHTML=alertsCardHTML(alerts)+`
     <div class="card"><h2>All counters <span class="sub">${pretty(date)}</span></h2>
       <div class="summary">
@@ -1014,7 +1075,20 @@ async function renderAdmin(){
         <table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">New units</th></tr></thead><tbody>${newRows}</tbody></table></div></div>
       <div class="col" style="min-width:260px"><div class="card"><h2>Products sold (by item)</h2>
         <table class="tbl"><thead><tr><th class="l">Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Amount</th></tr></thead><tbody>${soldRows}</tbody></table></div></div>
-    </div>`;
+    </div>
+
+    <div class="card"><h2>Product by counter <span class="sub">${pretty(date)} — highlighted = highest-selling counter</span></h2>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Product</th>${matHead}<th style="text-align:left">Top counter</th></tr></thead><tbody>${matRows}</tbody></table></div></div>
+
+    <div class="card"><h2>Extra / Shortage ledger <span class="sub">— all counters, completed days, running total</span></h2>
+      <div style="margin-bottom:10px;font-size:15px">Overall till today: ${esBadge}</div>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Date</th><th style="text-align:right">Shortage ₹</th><th style="text-align:right">Extra ₹</th><th style="text-align:right">Running total</th></tr></thead><tbody>${esRows}</tbody></table></div></div>
+
+    <div class="card"><h2>Waste record <span class="sub">— all days, by counter</span></h2>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">Waste prints</th><th style="text-align:right">Waste frames</th><th style="text-align:right">Waste magnets</th><th style="text-align:right">Waste keychains</th></tr></thead><tbody>${wasteRows}</tbody></table></div></div>
+
+    <div class="card"><h2>Tea expenses <span class="sub">— today &amp; running total</span></h2>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">Tea (today)</th><th style="text-align:right">Tea (total)</th></tr></thead><tbody>${teaRows}</tbody></table></div></div>`;
   wireAlertButtons(alerts);fireAlertNotification(alerts);
 }
 
