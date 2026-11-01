@@ -517,21 +517,24 @@ function applyStoreroomLabels(isSR){
 /* ---------- carry forward ---------- */
 function prevClose(date,id){
   const keys=Object.keys(entries).filter(d=>d<date).sort();
-  for(let i=keys.length-1;i>=0;i--){const st=(entries[keys[i]].stock||[]).find(s=>s.id===id);if(st)return num(st.close);}
-  return 0;
+  for(let i=keys.length-1;i>=0;i--){const st=(entries[keys[i]].stock||[]).find(s=>s.id===id);if(st&&hasClose(st.close))return num(st.close);}
+  return 0;   // no earlier day has a real closing for this item
 }
 function blankDay(date){
   return{date,opened:false,opening:0,sign:'',cash:0,gpay:0,tea:0,less:0,
     o1:{amt:0,reason:''},o2:{amt:0,reason:''},notes:'',
     photos:photoSizes.map(p=>({size:p.size,count:0,waste:0})),
-    stock:items.map(it=>({id:it.id,carried:prevClose(date,it.id),newStock:0,close:0,waste:0}))};
+    stock:items.map(it=>({id:it.id,carried:prevClose(date,it.id),newStock:0,close:'',waste:0}))};
 }
+/* a closing counts as "entered" only when the box has a value (0 is a valid entry; blank is not) */
+function hasClose(v){return v!==''&&v!=null&&!(typeof v==='number'&&isNaN(v));}
+function closingMissing(day){return (day.stock||[]).filter(s=>!hasClose(s.close));}
 
 /* ---------- load day ---------- */
 function loadDay(date){
   if(entries[date]){draft=JSON.parse(JSON.stringify(entries[date]));
     if(draft.opened===undefined)draft.opened=true;        // days saved before the lock feature
-    items.forEach(it=>{if(!draft.stock.find(s=>s.id===it.id))draft.stock.push({id:it.id,carried:prevClose(date,it.id),newStock:0,close:0,waste:0});});
+    items.forEach(it=>{if(!draft.stock.find(s=>s.id===it.id))draft.stock.push({id:it.id,carried:prevClose(date,it.id),newStock:0,close:"",waste:0});});
     photoSizes.forEach(p=>{if(!draft.photos.find(x=>x.size===p.size))draft.photos.push({size:p.size,count:0,waste:0});});
   } else draft=blankDay(date);
   // Opening ALWAYS = previous day's closing (+ any new stock). Re-derive every load so a
@@ -578,7 +581,7 @@ function renderGate(){
   if(!items.length){b.innerHTML=`<tr><td colspan="5" style="padding:14px;color:var(--muted)">No items yet — set products &amp; prices from the Admin portal.</td></tr>`;return;}
   items.forEach(it=>{
     if(it.seg!==seg){seg=it.seg;const sr=el('tr');sr.innerHTML=`<td colspan="5"><div class="seg">${esc(seg)}</div></td>`;b.appendChild(sr);}
-    let s=draft.stock.find(x=>x.id===it.id);if(!s){s={id:it.id,carried:prevClose(draft.date,it.id),newStock:0,close:0,waste:0};draft.stock.push(s);}
+    let s=draft.stock.find(x=>x.id===it.id);if(!s){s={id:it.id,carried:prevClose(draft.date,it.id),newStock:0,close:"",waste:0};draft.stock.push(s);}
     s.carried=prevClose(draft.date,it.id);   // opening always tracks the latest previous close
     const tr=el('tr');
     tr.innerHTML=`<td class="l">${esc(it.name)}</td>
@@ -626,19 +629,22 @@ function renderStock(){
   if(!items.length){b.innerHTML=`<tr><td colspan="7" style="padding:14px;color:var(--muted)">No items set up yet.</td></tr>`;return;}
   items.forEach(it=>{
     if(it.seg!==seg){seg=it.seg;const sr=el('tr');sr.innerHTML=`<td colspan="7"><div class="seg">${esc(seg)}</div></td>`;b.appendChild(sr);}
-    let s=draft.stock.find(x=>x.id===it.id);if(!s){s={id:it.id,carried:prevClose(draft.date,it.id),newStock:0,close:0,waste:0};draft.stock.push(s);}
-    const open=num(s.carried)+num(s.newStock);const sold=Math.max(0,open-num(s.close)-num(s.waste));
+    let s=draft.stock.find(x=>x.id===it.id);if(!s){s={id:it.id,carried:prevClose(draft.date,it.id),newStock:0,close:"",waste:0};draft.stock.push(s);}
+    const open=num(s.carried)+num(s.newStock);const entered=hasClose(s.close);const sold=entered?Math.max(0,open-num(s.close)-num(s.waste)):0;
     const rate=num(it.rate);const tr=el('tr');
+    const clVal=(s.close===''||s.close==null)?'':s.close;
     tr.innerHTML=`<td class="l">${esc(it.name)}</td>
       <td class="num col-money" style="font-weight:700;color:var(--amber-d)">${inr(rate)}</td>
       <td><b class="j-open num" title="Carried ${s.carried||0} + New ${s.newStock||0}">${open}</b></td>
-      <td><input class="j-cl num" type="number" min="0" value="${s.close||''}"></td>
+      <td><input class="j-cl num" type="number" min="0" value="${clVal}" placeholder="—" style="${entered?'':'border-color:var(--red);background:#fdf1ef'}"></td>
       <td class="col-waste"><input class="j-w num" type="number" min="0" value="${s.waste||''}"></td>
-      <td class="diff j-sold">${sold}</td>
-      <td class="amt j-amt col-money">${inr(sold*rate)}</td>`;
-    const upd=()=>{const o=num(s.carried)+num(s.newStock);const sd=Math.max(0,o-num(s.close)-num(s.waste));
-      tr.querySelector('.j-sold').textContent=sd;tr.querySelector('.j-amt').textContent=inr(sd*num(it.rate));recalc();};
-    tr.querySelector('.j-cl').oninput=e=>{s.close=num(e.target.value);upd();};
+      <td class="diff j-sold">${entered?sold:'—'}</td>
+      <td class="amt j-amt col-money">${entered?inr(sold*rate):'—'}</td>`;
+    const clEl=tr.querySelector('.j-cl');
+    const upd=()=>{const o=num(s.carried)+num(s.newStock);const en=hasClose(s.close);const sd=en?Math.max(0,o-num(s.close)-num(s.waste)):0;
+      tr.querySelector('.j-sold').textContent=en?sd:'—';tr.querySelector('.j-amt').textContent=en?inr(sd*num(it.rate)):'—';
+      clEl.style.borderColor=en?'':'var(--red)';clEl.style.background=en?'':'#fdf1ef';recalc();};
+    clEl.oninput=e=>{s.close=(e.target.value===''?'':num(e.target.value));upd();};
     tr.querySelector('.j-w').oninput=e=>{s.waste=num(e.target.value);upd();};
     b.appendChild(tr);
   });
@@ -650,7 +656,7 @@ $('#addItem').addEventListener('click',async()=>{
     {key:'rate',label:'Price ₹',type:'number'}]});
   if(!r||!r.name.trim())return;
   const id='x'+Date.now();items.push({id,seg:(r.seg||'Other').trim()||'Other',name:r.name.trim(),rate:num(r.rate)});
-  draft.stock.push({id,carried:prevClose(draft.date,id),newStock:0,close:0,waste:0});renderGate();
+  draft.stock.push({id,carried:prevClose(draft.date,id),newStock:0,close:"",waste:0});renderGate();
 });
 
 /* ---------- expenses are now fixed fields (Tea / Less / Others 1&2) ---------- */
@@ -689,10 +695,11 @@ const COUNTERS=['yercaud','photobox','pykara','ooty'];
 function soldInfo(day,its,ph){
   let photo=0,stockAmt=0,newStk=0;const rows=[];
   (day.photos||[]).forEach(x=>{const m=(ph||[]).find(p=>p.size===x.size)||{rate:0};const rate=(x.rate!=null?num(x.rate):num(m.rate));const sold=Math.max(0,num(x.count)-num(x.waste));const a=sold*rate;photo+=a;if(sold)rows.push({name:'Photo '+x.size,qty:sold,amt:a});});
-  (day.stock||[]).forEach(s=>{const it=(its||[]).find(i=>i.id===s.id);if(!it)return;if(it.supply)return;newStk+=num(s.newStock);const open=num(s.carried)+num(s.newStock);const sold=Math.max(0,open-num(s.close)-num(s.waste));const rate=(s.rate!=null?num(s.rate):num(it.rate));const a=sold*rate;stockAmt+=a;if(sold)rows.push({name:it.name,qty:sold,amt:a});});
+  (day.stock||[]).forEach(s=>{const it=(its||[]).find(i=>i.id===s.id);if(!it)return;if(it.supply)return;newStk+=num(s.newStock);const open=num(s.carried)+num(s.newStock);const sold=hasClose(s.close)?Math.max(0,open-num(s.close)-num(s.waste)):0;const rate=(s.rate!=null?num(s.rate):num(it.rate));const a=sold*rate;stockAmt+=a;if(sold)rows.push({name:it.name,qty:sold,amt:a});});
   const tea=num(day.tea),less=num(day.less),o1=num(day.o1&&day.o1.amt),o2=num(day.o2&&day.o2.amt);
   const exp=tea+less+o1+o2,cash=num(day.cash),gpay=num(day.gpay),gross=photo+stockAmt;
-  return{photo,stock:stockAmt,gross,net:gross,exp,tea,less,o1,o2,cash,gpay,newStk,rows};
+  const missing=(day.stock||[]).filter(s=>!hasClose(s.close)).length;
+  return{photo,stock:stockAmt,gross,net:gross,exp,tea,less,o1,o2,cash,gpay,newStk,rows,missing,complete:missing===0};
 }
 function calcFull(day,its,ph){const r=soldInfo(day,its,ph);const collected=r.cash+r.gpay;r.collected=collected;r.diff=r.gross-r.exp-collected;return r;}
 function calc(day){return calcFull(day,items,photoSizes);}
@@ -703,6 +710,13 @@ function stampRates(day){ // freeze today's prices onto the saved day
 function recalc(){
   const c=calc(draft);
   const ok=Math.abs(c.diff)<1;
+  const miss=closingMissing(draft).length;
+  if(miss>0){  // closing incomplete — do not show any result (avoids misinformation)
+    const msg=`<div class="diffbox bad" style="font-size:15px;padding:14px">⚠ Closing not complete — ${miss} item${miss>1?'s':''} still blank.<br>Enter the closing count for every item to see the result.</div>`;
+    $('#reconBox').innerHTML=msg;
+    if(!(shop&&shop.hideAmounts))$('#summary').innerHTML=`<div class="stat" style="grid-column:1/-1"><div class="k">Result</div><div class="v" style="font-size:15px;color:var(--muted)">Enter all closing counts…</div></div>`;
+    return;
+  }
   if(shop&&shop.hideAmounts){  // blind-entry counter: only the verdict word
     $('#reconBox').innerHTML=`<div class="diffbox ${ok?'ok':'bad'}" style="font-size:17px;padding:16px">${ok?'✓ CORRECT':(c.diff>0?'SHORTAGE':'EXTRA')}</div>`;
     return;
@@ -726,10 +740,20 @@ function recalc(){
 
 /* ---------- save / reset ---------- */
 $('#saveDay').addEventListener('click',async()=>{
-  draft.savedAt=new Date().toISOString();stampRates(draft);
+  const missing=closingMissing(draft);
+  if(missing.length){
+    const names=missing.map(s=>{const it=items.find(i=>i.id===s.id);return it?it.name:s.id;});
+    await confirmBox('Please enter the closing count for every item before closing the accounts. Still blank: '+names.slice(0,6).join(', ')+(names.length>6?` +${names.length-6} more`:''),'OK');
+    // highlight & jump to the first blank closing box
+    renderStock();
+    const firstEmpty=[...$('#stockBody').querySelectorAll('.j-cl')].find(i=>i.value==='');
+    if(firstEmpty){firstEmpty.scrollIntoView({behavior:'smooth',block:'center'});firstEmpty.focus();}
+    return;
+  }
+  draft.finalized=true;draft.savedAt=new Date().toISOString();stampRates(draft);
   entries[draft.date]=JSON.parse(JSON.stringify(draft));
   await saveShopData(shop.id,{entries,items,photo:photoSizes});
-  toast('Saved '+pretty(draft.date));renderHistory();
+  toast('Accounts closed & saved — '+pretty(draft.date));renderHistory();
 });
 /* auto-save: every edit on the day sheet is persisted, so closing is never lost
    and carries forward to the next day even if "Save day" isn't pressed */
@@ -747,7 +771,7 @@ function autosaveDay(){
 $('#daySheet').addEventListener('input',autosaveDay);
 $('#daySheet').addEventListener('change',autosaveDay);
 $('#clearDay').addEventListener('click',async()=>{if(await confirmBox("Clear today's closing entries? The locked opening stays as it is.",'Clear')){
-  draft.stock.forEach(s=>{s.close=0;s.waste=0;});
+  draft.stock.forEach(s=>{s.close='';s.waste=0;});
   draft.photos.forEach(p=>{p.count=0;p.waste=0;});
   draft.cash=0;draft.gpay=0;draft.tea=0;draft.less=0;draft.o1={amt:0,reason:''};draft.o2={amt:0,reason:''};
   ['cash','gpay','tea','less','o1amt','o1reason','o2amt','o2reason'].forEach(id=>$('#'+id).value='');
@@ -856,10 +880,9 @@ async function stockAlerts(){
     const d=await loadShopData(id);const ents=d.entries||{};const its=d.items||defItems(id);
     const keys=Object.keys(ents).sort();if(!keys.length)continue;
     const e=ents[keys[keys.length-1]];
-    const finished=num(e.cash)||num(e.gpay)||(e.stock||[]).some(s=>num(s.close)>0);
     (e.stock||[]).forEach(s=>{const it=its.find(i=>i.id===s.id);if(!it)return;
       const mn=minFor(it);if(mn==null)return;
-      const cur=finished?num(s.close):(num(s.carried)+num(s.newStock));
+      const cur=hasClose(s.close)?num(s.close):(num(s.carried)+num(s.newStock)); // use entered close, else current opening
       if(cur<mn)out.push({shop:SHOPS[id].name,item:it.name,cur,mn,asof:keys[keys.length-1]});
     });
   }
@@ -939,9 +962,10 @@ async function renderAdmin(){
   const cards=per.map(p=>{
     if(!p.info)return `<div class="cc off"><div class="ccn">${esc(p.name)}</div><div class="ccm" style="margin-top:8px">No entry for this day</div></div>`;
     const isBest=best&&p.id===best.id;
+    const incomplete=p.info.missing>0?`<div style="color:var(--red);font-weight:700;font-size:11.5px;margin-top:6px">⚠ Closing incomplete — ${p.info.missing} item(s) not entered</div>`:'';
     return `<div class="cc ${isBest?'best':''}"><div class="ccn"><span>${esc(p.name)}</span>${isBest?'<span class="badge">Top</span>':''}</div>
       <div class="ccg">${inr(p.info.gross)}</div>
-      <div class="ccm">Cash ${inr(p.info.cash)} · GPay ${inr(p.info.gpay)}<br>GST 18% on GPay ${inr(p.info.gpay*GST)}<br>Products sold ${p.info.units} · New stock ${p.info.newStk}<br>Expenses ${inr(p.info.exp)}</div></div>`;
+      <div class="ccm">Cash ${inr(p.info.cash)} · GPay ${inr(p.info.gpay)}<br>GST 18% on GPay ${inr(p.info.gpay*GST)}<br>Products sold ${p.info.units} · New stock ${p.info.newStk}<br>Expenses ${inr(p.info.exp)}</div>${incomplete}</div>`;
   }).join('');
 
   const colRows=per.map(p=>{
