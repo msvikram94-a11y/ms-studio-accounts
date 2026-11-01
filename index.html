@@ -346,6 +346,10 @@ async function saveShopData(id,data){
   if(data.items!==undefined)await Store.set(k.items,data.items);
   if(data.photo!==undefined)await Store.set(k.photo,data.photo);
 }
+/* business settings (salary, rent, profit margin, purchases) — stored like a shop, synced */
+const DEFAULT_CFG={salary:250000,rent:350000,margin:50,purchases:0};
+async function loadConfig(){const d=await loadShopData('settings');return Object.assign({},DEFAULT_CFG,(d&&d.items&&d.items[0])||{});}
+async function saveConfig(cfg){await saveShopData('settings',{items:[cfg]});}
 const SHOPS={
   yercaud :{id:'yercaud', name:'Yercaud',  pass:'yercaudpass',  ready:true },
   photobox:{id:'photobox',name:'Photobox', pass:'photoboxpass', ready:true },
@@ -942,6 +946,7 @@ function fireAlertNotification(alerts){
 async function renderAdmin(){
   const date=$('#adDate').value||todayStr();
   const alerts=await stockAlerts();
+  const cfg=await loadConfig();
   const per=[];
   for(const id of COUNTERS){
     const d=await loadShopData(id);
@@ -1052,6 +1057,47 @@ async function renderAdmin(){
     const cells=COUNTERS.map(id=>`<td class="n">${inr(m.per[id]||0)}</td>`).join('');
     return `<tr><td class="l">${label}</td>${cells}<td class="n"><b>${inr(m.total)}</b></td></tr>`;}).join('')||`<tr><td colspan="${COUNTERS.length+2}" style="padding:12px;color:var(--muted)">No completed business yet.</td></tr>`;
 
+  /* ---- monthly profit / break-even tracker ---- */
+  const curMonth=todayStr().slice(0,7);
+  const curMonthLabel=new Date(curMonth+'-01T00:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  const bizMonth=(monthMap[curMonth]&&monthMap[curMonth].total)||0;
+  const margin=num(cfg.margin)||50;
+  const profit=bizMonth*margin/100;
+  const fixed=num(cfg.salary)+num(cfg.rent);
+  const purchases=num(cfg.purchases);
+  const target=fixed+purchases;
+  const pct=target>0?Math.min(100,Math.round(profit/target*100)):0;
+  const remaining=Math.max(0,target-profit);
+  const bizNeeded=margin>0?remaining*100/margin:0;
+  const statusLine= profit>=target
+    ? `<span style="color:var(--green);font-weight:800">✓ Covered — surplus of ${inr(profit-target)} this month</span>`
+    : `Need <b>${inr(remaining)}</b> more profit — about <b>${inr(bizNeeded)}</b> more business this month to break even.`;
+  const barColor= profit>=target?'var(--green)':(pct>=66?'var(--amber)':'var(--red)');
+  const profitCard=`
+    <div class="card" style="border:2px solid ${profit>=target?'#bfe6d2':'#f1dcae'}">
+      <h2>Monthly profit tracker <span class="sub">${curMonthLabel}</span></h2>
+      <div class="summary" style="margin-bottom:12px">
+        <div class="stat sales"><div class="k">Business this month</div><div class="v">${inr(bizMonth)}</div></div>
+        <div class="stat cash"><div class="k">Your profit (${margin}%)</div><div class="v">${inr(profit)}</div></div>
+        <div class="stat exp"><div class="k">Monthly costs</div><div class="v">${inr(target)}</div></div>
+        <div class="stat"><div class="k">Progress</div><div class="v">${pct}%</div></div>
+      </div>
+      <div class="btrack" style="height:22px"><span class="bfill" style="width:${pct}%;background:${barColor}"></span></div>
+      <div style="margin-top:10px;font-size:14px">${statusLine}</div>
+      <div style="margin-top:8px;font-size:12.5px;color:var(--muted)">Costs = Salary ${inr(num(cfg.salary))} + Rent ${inr(num(cfg.rent))} + Purchases ${inr(purchases)}. Profit is taken as ${margin}% of business.</div>
+      <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700;font-size:13px;color:var(--amber-d)">Edit costs &amp; margin</summary>
+        <div class="row" style="margin-top:10px">
+          <div class="col"><label class="lbl">Staff salary / month ₹</label><input class="inp num" type="number" id="cfgSalary" value="${num(cfg.salary)}"></div>
+          <div class="col"><label class="lbl">Rent / month ₹</label><input class="inp num" type="number" id="cfgRent" value="${num(cfg.rent)}"></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div class="col"><label class="lbl">Profit margin %</label><input class="inp num" type="number" id="cfgMargin" value="${margin}"></div>
+          <div class="col"><label class="lbl">Purchases this month ₹</label><input class="inp num" type="number" id="cfgPurch" value="${purchases}"></div>
+        </div>
+        <div class="actions" style="margin-top:12px"><button class="btn btn-save" id="cfgSave">Save settings</button></div>
+      </details>
+    </div>`;
+
   body.innerHTML=alertsCardHTML(alerts)+`
     <div class="card"><h2>All counters <span class="sub">${pretty(date)}</span></h2>
       <div class="summary">
@@ -1064,6 +1110,8 @@ async function renderAdmin(){
       </div>
       <div style="margin-top:12px;font-size:13.5px;color:var(--ink-2)">${best?`<b>${esc(best.name)}</b> performed best today with <b>${inr(best.info.gross)}</b>. Total new stock moved to counters: <b>${totNew}</b>.`:''}</div>
     </div>
+
+    ${profitCard}
 
     <div class="card"><h2>Collections &amp; GST <span class="sub">— GST is 18% of the GPay amount only</span></h2>
       <table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">Cash</th><th style="text-align:right">GPay</th><th style="text-align:right">GST 18% (GPay)</th><th style="text-align:right">Products sold</th></tr></thead>
@@ -1108,6 +1156,10 @@ async function renderAdmin(){
     <div class="card"><h2>Monthly business <span class="sub">— total by month &amp; counter</span></h2>
       <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Month</th>${moHead}<th style="text-align:right">All counters</th></tr></thead><tbody>${moRows}</tbody></table></div></div>`;
   wireAlertButtons(alerts);fireAlertNotification(alerts);
+  const cs=$('#cfgSave');if(cs)cs.onclick=async()=>{
+    const newCfg={salary:num($('#cfgSalary').value),rent:num($('#cfgRent').value),margin:num($('#cfgMargin').value)||50,purchases:num($('#cfgPurch').value)};
+    await saveConfig(newCfg);toast('Settings saved');renderAdmin();
+  };
 }
 
 /* ---------- admin tabs ---------- */
