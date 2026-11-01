@@ -545,6 +545,11 @@ function blankDay(date){
 /* a closing counts as "entered" only when the box has a value (0 is a valid entry; blank is not) */
 function hasClose(v){return v!==''&&v!=null&&!(typeof v==='number'&&isNaN(v));}
 function closingMissing(day){return (day.stock||[]).filter(s=>!hasClose(s.close));}
+/* a day counts in extra/shortage, business & accuracy ONLY once the accounts are closed
+   (Save day pressed → finalized). Today's in-progress day is never counted until then.
+   Legacy days (saved before the finalized flag) count if fully closed and in the past. */
+function isClosed(e,dt){if(!e)return false;if(e.finalized===true)return true;if(e.finalized===false)return false;
+  const allClose=(e.stock||[]).length>0&&(e.stock||[]).every(s=>hasClose(s.close));return allClose&&!!dt&&dt<todayStr();}
 
 /* ---------- load day ---------- */
 function loadDay(date){
@@ -574,7 +579,7 @@ function loadDay(date){
 function renderStaffTally(){
   const box=$('#staffTally');if(!box)return;
   const blind=!!(shop&&shop.hideAmounts);
-  const dates=Object.keys(entries).filter(dt=>dt>=DATA_START&&(entries[dt].stock||[]).every(s=>hasClose(s.close))).sort();
+  const dates=Object.keys(entries).filter(dt=>dt>=DATA_START&&isClosed(entries[dt],dt)).sort();
   if(!dates.length){box.innerHTML=`<div class="empty" style="padding:16px">No completed days yet. Finish a day's closing to start the record.</div>`;return;}
   let running=0,exDays=0,shDays=0;
   const rows=dates.slice().reverse().map(dt=>{
@@ -980,7 +985,7 @@ async function renderAdmin(){
 
   /* staff accuracy across saved days (from DATA_START) */
   const staff={};
-  per.forEach(p=>{Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;const day=p.ents[dt];
+  per.forEach(p=>{Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;const day=p.ents[dt];if(!isClosed(day,dt))return;
     const nm=(day.sign&&String(day.sign).trim())||'(no name)';
     const c=calcFull(day,p.its,p.ph);const ad=Math.abs(c.diff);
     if(!staff[nm])staff[nm]={days:0,perfect:0,mistakes:0,err:0};
@@ -1031,7 +1036,7 @@ async function renderAdmin(){
 
   /* ---- extra / shortage ledger (cumulative from DATA_START, all counters, complete days only) ---- */
   const dayDiff={};
-  per.forEach(p=>{Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;const e=p.ents[dt];if(!(e.stock||[]).every(s=>hasClose(s.close)))return;dayDiff[dt]=(dayDiff[dt]||0)+calcFull(e,p.its,p.ph).diff;});});
+  per.forEach(p=>{Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;const e=p.ents[dt];if(!isClosed(e,dt))return;dayDiff[dt]=(dayDiff[dt]||0)+calcFull(e,p.its,p.ph).diff;});});
   const esDates=Object.keys(dayDiff).sort();let running=0;
   const esRows=esDates.map(dt=>{const nd=dayDiff[dt];running+=nd;const sh=nd>0?nd:0,ex=nd<0?-nd:0;
     return `<tr><td class="l">${pretty(dt)}</td><td class="n" style="color:var(--red)">${sh?inr(sh):'—'}</td><td class="n" style="color:var(--green)">${ex?inr(ex):'—'}</td><td class="n">${running>0?'Short '+inr(running):(running<0?'Extra '+inr(-running):'Nil')}</td></tr>`;}).join('')||`<tr><td colspan="4" style="padding:12px;color:var(--muted)">No completed days yet.</td></tr>`;
@@ -1055,7 +1060,7 @@ async function renderAdmin(){
 
   /* ---- total business per counter (till date) + monthly business ---- */
   const bizPer={};let bizTotal=0;const monthMap={};
-  per.forEach(p=>{let tot=0;Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;const e=p.ents[dt];if(!(e.stock||[]).every(s=>hasClose(s.close)))return;const g=soldInfo(e,p.its,p.ph).gross;tot+=g;bizTotal+=g;const mo=dt.slice(0,7);if(!monthMap[mo])monthMap[mo]={total:0,per:{}};monthMap[mo].total+=g;monthMap[mo].per[p.id]=(monthMap[mo].per[p.id]||0)+g;});bizPer[p.id]=tot;});
+  per.forEach(p=>{let tot=0;Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;const e=p.ents[dt];if(!isClosed(e,dt))return;const g=soldInfo(e,p.its,p.ph).gross;tot+=g;bizTotal+=g;const mo=dt.slice(0,7);if(!monthMap[mo])monthMap[mo]={total:0,per:{}};monthMap[mo].total+=g;monthMap[mo].per[p.id]=(monthMap[mo].per[p.id]||0)+g;});bizPer[p.id]=tot;});
   const bizRows=per.map(p=>`<tr><td class="l">${esc(p.name)}</td><td class="n">${inr(bizPer[p.id]||0)}</td></tr>`).join('')
     +`<tr style="border-top:2px solid var(--line)"><td class="l"><b>All counters</b></td><td class="n"><b>${inr(bizTotal)}</b></td></tr>`;
   const moHead=COUNTERS.map(id=>`<th style="text-align:right">${esc(SHOPS[id].name)}</th>`).join('');
