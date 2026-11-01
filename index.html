@@ -347,7 +347,7 @@ async function saveShopData(id,data){
   if(data.photo!==undefined)await Store.set(k.photo,data.photo);
 }
 /* business settings (salary, rent, profit margin, purchases) — stored like a shop, synced */
-const DEFAULT_CFG={salary:250000,rent:350000,margin:50,purchases:0};
+const DEFAULT_CFG={salary:250000,rent:350000,margin:50,purchases:0,loanInterest:50000,ssy:12000,rentalIncome:75000,loan:5200000};
 async function loadConfig(){const d=await loadShopData('settings');return Object.assign({},DEFAULT_CFG,(d&&d.items&&d.items[0])||{});}
 async function saveConfig(cfg){await saveShopData('settings',{items:[cfg]});}
 const SHOPS={
@@ -1063,32 +1063,48 @@ async function renderAdmin(){
   const bizMonth=(monthMap[curMonth]&&monthMap[curMonth].total)||0;
   const margin=num(cfg.margin)||50;
   const profit=bizMonth*margin/100;
-  const fixed=num(cfg.salary)+num(cfg.rent);
-  const purchases=num(cfg.purchases);
-  const target=fixed+purchases;
-  const pct=target>0?Math.min(100,Math.round(profit/target*100)):0;
+  const salary=num(cfg.salary),rent=num(cfg.rent),purchases=num(cfg.purchases),loanInt=num(cfg.loanInterest),ssy=num(cfg.ssy),rentalInc=num(cfg.rentalIncome),loan=num(cfg.loan);
+  const outgo=salary+rent+purchases+loanInt+ssy;         // money going out each month
+  const target=Math.max(0,outgo-rentalInc);              // net that business profit must cover (rent income offsets)
+  const pct=target>0?Math.min(100,Math.round(profit/target*100)):100;
   const remaining=Math.max(0,target-profit);
   const bizNeeded=margin>0?remaining*100/margin:0;
-  const statusLine= profit>=target
-    ? `<span style="color:var(--green);font-weight:800">✓ Covered — surplus of ${inr(profit-target)} this month</span>`
-    : `Need <b>${inr(remaining)}</b> more profit — about <b>${inr(bizNeeded)}</b> more business this month to break even.`;
-  const barColor= profit>=target?'var(--green)':(pct>=66?'var(--amber)':'var(--red)');
+  const surplus=profit-target;                           // what's left after everything → toward loan principal
+  const payoffMonths=(loan>0&&surplus>0)?Math.ceil(loan/surplus):null;
+  const statusLine= surplus>=0
+    ? `<span style="color:var(--green);font-weight:800">✓ All covered — surplus of ${inr(surplus)} this month toward the loan.</span>`
+    : `Need <b>${inr(remaining)}</b> more profit — about <b>${inr(bizNeeded)}</b> more business this month to cover everything.`;
+  const barColor= surplus>=0?'var(--green)':(pct>=66?'var(--amber)':'var(--red)');
+  const loanLine = loan>0
+    ? (surplus>0
+        ? `Loan outstanding <b>${inr(loan)}</b> · at this month's surplus of ${inr(surplus)}/mo it clears in about <b>${payoffMonths} month${payoffMonths>1?'s':''}</b>. More business = faster payoff.`
+        : `Loan outstanding <b>${inr(loan)}</b> · interest ${inr(loanInt)}/mo. No surplus yet this month to pay down principal — cover the monthly need first.`)
+    : '';
   const profitCard=`
-    <div class="card" style="border:2px solid ${profit>=target?'#bfe6d2':'#f1dcae'}">
-      <h2>Monthly profit tracker <span class="sub">${curMonthLabel}</span></h2>
+    <div class="card" style="border:2px solid ${surplus>=0?'#bfe6d2':'#f1dcae'}">
+      <h2>Monthly profit &amp; loan tracker <span class="sub">${curMonthLabel}</span></h2>
       <div class="summary" style="margin-bottom:12px">
         <div class="stat sales"><div class="k">Business this month</div><div class="v">${inr(bizMonth)}</div></div>
         <div class="stat cash"><div class="k">Your profit (${margin}%)</div><div class="v">${inr(profit)}</div></div>
-        <div class="stat exp"><div class="k">Monthly costs</div><div class="v">${inr(target)}</div></div>
-        <div class="stat"><div class="k">Progress</div><div class="v">${pct}%</div></div>
+        <div class="stat exp"><div class="k">Monthly need (net)</div><div class="v">${inr(target)}</div></div>
+        <div class="stat"><div class="k">${surplus>=0?'Surplus → loan':'Progress'}</div><div class="v" style="color:${surplus>=0?'var(--green)':'inherit'}">${surplus>=0?inr(surplus):pct+'%'}</div></div>
       </div>
       <div class="btrack" style="height:22px"><span class="bfill" style="width:${pct}%;background:${barColor}"></span></div>
       <div style="margin-top:10px;font-size:14px">${statusLine}</div>
-      <div style="margin-top:8px;font-size:12.5px;color:var(--muted)">Costs = Salary ${inr(num(cfg.salary))} + Rent ${inr(num(cfg.rent))} + Purchases ${inr(purchases)}. Profit is taken as ${margin}% of business.</div>
-      <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700;font-size:13px;color:var(--amber-d)">Edit costs &amp; margin</summary>
+      ${loanLine?`<div style="margin-top:8px;font-size:13px;color:var(--ink-2)">${loanLine}</div>`:''}
+      <div style="margin-top:8px;font-size:12px;color:var(--muted)">Out: Salary ${inr(salary)} + Rent ${inr(rent)} + Purchases ${inr(purchases)} + Loan interest ${inr(loanInt)} + SSY ${inr(ssy)} = ${inr(outgo)}. In: rental income ${inr(rentalInc)}. Net need ${inr(target)}. Profit = ${margin}% of business.</div>
+      <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700;font-size:13px;color:var(--amber-d)">Edit figures</summary>
         <div class="row" style="margin-top:10px">
-          <div class="col"><label class="lbl">Staff salary / month ₹</label><input class="inp num" type="number" id="cfgSalary" value="${num(cfg.salary)}"></div>
-          <div class="col"><label class="lbl">Rent / month ₹</label><input class="inp num" type="number" id="cfgRent" value="${num(cfg.rent)}"></div>
+          <div class="col"><label class="lbl">Staff salary / month ₹</label><input class="inp num" type="number" id="cfgSalary" value="${salary}"></div>
+          <div class="col"><label class="lbl">Shops rent / month ₹</label><input class="inp num" type="number" id="cfgRent" value="${rent}"></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div class="col"><label class="lbl">Loan interest / month ₹</label><input class="inp num" type="number" id="cfgLoanInt" value="${loanInt}"></div>
+          <div class="col"><label class="lbl">Loan outstanding ₹</label><input class="inp num" type="number" id="cfgLoan" value="${loan}"></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div class="col"><label class="lbl">SSY (daughter) / month ₹</label><input class="inp num" type="number" id="cfgSsy" value="${ssy}"></div>
+          <div class="col"><label class="lbl">Rental income / month ₹</label><input class="inp num" type="number" id="cfgRentalInc" value="${rentalInc}"></div>
         </div>
         <div class="row" style="margin-top:10px">
           <div class="col"><label class="lbl">Profit margin %</label><input class="inp num" type="number" id="cfgMargin" value="${margin}"></div>
@@ -1157,7 +1173,8 @@ async function renderAdmin(){
       <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Month</th>${moHead}<th style="text-align:right">All counters</th></tr></thead><tbody>${moRows}</tbody></table></div></div>`;
   wireAlertButtons(alerts);fireAlertNotification(alerts);
   const cs=$('#cfgSave');if(cs)cs.onclick=async()=>{
-    const newCfg={salary:num($('#cfgSalary').value),rent:num($('#cfgRent').value),margin:num($('#cfgMargin').value)||50,purchases:num($('#cfgPurch').value)};
+    const newCfg={salary:num($('#cfgSalary').value),rent:num($('#cfgRent').value),margin:num($('#cfgMargin').value)||50,purchases:num($('#cfgPurch').value),
+      loanInterest:num($('#cfgLoanInt').value),loan:num($('#cfgLoan').value),ssy:num($('#cfgSsy').value),rentalIncome:num($('#cfgRentalInc').value)};
     await saveConfig(newCfg);toast('Settings saved');renderAdmin();
   };
 }
