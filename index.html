@@ -351,7 +351,7 @@ const DEFAULT_CFG={salary:250000,rent:350000,margin:50,purchases:0,loanInterest:
   payments:[
     {label:'Ooty Boat House — tender amount',amount:354000,date:'2026-12-01'},
     {label:'Ooty Boat House',amount:1500000,date:'2027-01-01'},
-    {label:'Yercaud',amount:0,date:'2027-02-26'},
+    {label:'Yercaud',amount:1250000,date:'2027-02-26'},
   ]};
 let adminCfg=null;
 async function loadConfig(){const d=await loadShopData('settings');const c=Object.assign({},DEFAULT_CFG,(d&&d.items&&d.items[0])||{});if(!c.payments)c.payments=JSON.parse(JSON.stringify(DEFAULT_CFG.payments));return c;}
