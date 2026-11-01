@@ -347,8 +347,14 @@ async function saveShopData(id,data){
   if(data.photo!==undefined)await Store.set(k.photo,data.photo);
 }
 /* business settings (salary, rent, profit margin, purchases) — stored like a shop, synced */
-const DEFAULT_CFG={salary:250000,rent:350000,margin:50,purchases:0,loanInterest:50000,ssy:12000,rentalIncome:75000,loan:5200000};
-async function loadConfig(){const d=await loadShopData('settings');return Object.assign({},DEFAULT_CFG,(d&&d.items&&d.items[0])||{});}
+const DEFAULT_CFG={salary:250000,rent:350000,margin:50,purchases:0,loanInterest:50000,ssy:12000,rentalIncome:75000,loan:5200000,
+  payments:[
+    {label:'Ooty Boat House — tender amount',amount:354000,date:'2026-12-01'},
+    {label:'Ooty Boat House',amount:1500000,date:'2027-01-01'},
+    {label:'Yercaud',amount:0,date:'2027-02-26'},
+  ]};
+let adminCfg=null;
+async function loadConfig(){const d=await loadShopData('settings');const c=Object.assign({},DEFAULT_CFG,(d&&d.items&&d.items[0])||{});if(!c.payments)c.payments=JSON.parse(JSON.stringify(DEFAULT_CFG.payments));return c;}
 async function saveConfig(cfg){await saveShopData('settings',{items:[cfg]});}
 const SHOPS={
   yercaud :{id:'yercaud', name:'Yercaud',  pass:'yercaudpass',  ready:true },
@@ -450,6 +456,7 @@ function adminPass(){return 'Atta@'+ddmmyy();}
 const inr=n=>'₹'+(Number(n)||0).toLocaleString('en-IN',{maximumFractionDigits:2});
 const num=v=>{const n=parseFloat(v);return isFinite(n)?n:0;};
 const pretty=d=>{const[y,m,dd]=d.split('-');return new Date(y,m-1,dd).toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});};
+function daysUntil(dateStr){if(!dateStr)return 0;const t=new Date(todayStr()+'T00:00:00');const d=new Date(dateStr+'T00:00:00');return Math.round((d-t)/86400000);}
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1900);}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 /* in-page dialogs (browser prompt/confirm are blocked in sandboxed previews) */
@@ -946,7 +953,7 @@ function fireAlertNotification(alerts){
 async function renderAdmin(){
   const date=$('#adDate').value||todayStr();
   const alerts=await stockAlerts();
-  const cfg=await loadConfig();
+  const cfg=await loadConfig();adminCfg=cfg;
   const per=[];
   for(const id of COUNTERS){
     const d=await loadShopData(id);
@@ -1114,6 +1121,26 @@ async function renderAdmin(){
       </details>
     </div>`;
 
+  /* ---- payments & deadlines countdown ---- */
+  const pays=(cfg.payments||[]).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const payRowsHtml=pays.length?pays.map(p=>{const dl=daysUntil(p.date);
+    const col=dl<0?'var(--muted)':(dl<=7?'var(--red)':(dl<=30?'var(--amber-d)':'var(--green)'));
+    const dtxt=!p.date?'—':(dl<0?'passed':(dl===0?'TODAY':dl+' day'+(dl>1?'s':'')+' left'));
+    return `<tr><td class="l">${esc(p.label||'—')}</td><td class="n">${p.amount?inr(p.amount):'—'}</td><td class="n">${p.date?pretty(p.date):'—'}</td><td class="n" style="color:${col};font-weight:800">${dtxt}</td></tr>`;
+  }).join(''):`<tr><td colspan="4" style="padding:12px;color:var(--muted)">No payments added yet.</td></tr>`;
+  const payEdit=(cfg.payments||[]).map((p,i)=>`<div class="row pay-row" style="margin-top:8px;align-items:center">
+    <input class="inp pl" style="flex:2;min-width:140px" value="${esc(p.label||'')}" placeholder="What for">
+    <input class="inp pa num" type="number" style="max-width:130px" value="${num(p.amount)||''}" placeholder="Amount ₹">
+    <input class="inp pd" type="date" style="max-width:170px" value="${p.date||''}">
+    <button class="x pay-del" data-i="${i}" title="Remove">×</button></div>`).join('');
+  const paymentsCard=`
+    <div class="card"><h2>Payments &amp; deadlines <span class="sub">— day countdown</span></h2>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Payment</th><th style="text-align:right">Amount</th><th style="text-align:right">Due date</th><th style="text-align:right">Countdown</th></tr></thead><tbody>${payRowsHtml}</tbody></table></div>
+      <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700;font-size:13px;color:var(--amber-d)">Edit payments</summary>
+        <div id="payEditor">${payEdit}</div>
+        <div class="actions" style="margin-top:10px"><button class="btn-ghost" id="payAdd">+ Add payment</button><button class="btn btn-save" id="paySave">Save payments</button></div>
+      </details></div>`;
+
   body.innerHTML=alertsCardHTML(alerts)+`
     <div class="card"><h2>All counters <span class="sub">${pretty(date)}</span></h2>
       <div class="summary">
@@ -1128,6 +1155,8 @@ async function renderAdmin(){
     </div>
 
     ${profitCard}
+
+    ${paymentsCard}
 
     <div class="card"><h2>Collections &amp; GST <span class="sub">— GST is 18% of the GPay amount only</span></h2>
       <table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">Cash</th><th style="text-align:right">GPay</th><th style="text-align:right">GST 18% (GPay)</th><th style="text-align:right">Products sold</th></tr></thead>
@@ -1173,10 +1202,14 @@ async function renderAdmin(){
       <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Month</th>${moHead}<th style="text-align:right">All counters</th></tr></thead><tbody>${moRows}</tbody></table></div></div>`;
   wireAlertButtons(alerts);fireAlertNotification(alerts);
   const cs=$('#cfgSave');if(cs)cs.onclick=async()=>{
-    const newCfg={salary:num($('#cfgSalary').value),rent:num($('#cfgRent').value),margin:num($('#cfgMargin').value)||50,purchases:num($('#cfgPurch').value),
-      loanInterest:num($('#cfgLoanInt').value),loan:num($('#cfgLoan').value),ssy:num($('#cfgSsy').value),rentalIncome:num($('#cfgRentalInc').value)};
-    await saveConfig(newCfg);toast('Settings saved');renderAdmin();
+    Object.assign(adminCfg,{salary:num($('#cfgSalary').value),rent:num($('#cfgRent').value),margin:num($('#cfgMargin').value)||50,purchases:num($('#cfgPurch').value),
+      loanInterest:num($('#cfgLoanInt').value),loan:num($('#cfgLoan').value),ssy:num($('#cfgSsy').value),rentalIncome:num($('#cfgRentalInc').value)});
+    await saveConfig(adminCfg);toast('Settings saved');renderAdmin();
   };
+  function readPayEditor(){const rows=[...document.querySelectorAll('#payEditor .pay-row')];adminCfg.payments=rows.map(r=>({label:r.querySelector('.pl').value,amount:num(r.querySelector('.pa').value),date:r.querySelector('.pd').value}));}
+  const pa=$('#payAdd');if(pa)pa.onclick=async()=>{readPayEditor();adminCfg.payments.push({label:'',amount:0,date:todayStr()});await saveConfig(adminCfg);renderAdmin();};
+  const psv=$('#paySave');if(psv)psv.onclick=async()=>{readPayEditor();await saveConfig(adminCfg);toast('Payments saved');renderAdmin();};
+  document.querySelectorAll('.pay-del').forEach(b=>b.onclick=async()=>{readPayEditor();adminCfg.payments.splice(num(b.dataset.i),1);await saveConfig(adminCfg);renderAdmin();});
 }
 
 /* ---------- admin tabs ---------- */
