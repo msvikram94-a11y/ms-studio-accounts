@@ -563,7 +563,7 @@ function loadDay(date){
 function renderStaffTally(){
   const box=$('#staffTally');if(!box)return;
   const blind=!!(shop&&shop.hideAmounts);
-  const dates=Object.keys(entries).filter(dt=>(entries[dt].stock||[]).every(s=>hasClose(s.close))).sort();
+  const dates=Object.keys(entries).filter(dt=>dt>=DATA_START&&(entries[dt].stock||[]).every(s=>hasClose(s.close))).sort();
   if(!dates.length){box.innerHTML=`<div class="empty" style="padding:16px">No completed days yet. Finish a day's closing to start the record.</div>`;return;}
   let running=0,exDays=0,shDays=0;
   const rows=dates.slice().reverse().map(dt=>{
@@ -718,6 +718,7 @@ $('#entryDate').addEventListener('change',e=>loadDay(e.target.value));
 
 /* ---------- calc ---------- */
 const COUNTERS=['yercaud','photobox','pykara','ooty'];
+const DATA_START='2026-10-31';   // records/totals count from this date onward (older test data ignored)
 function soldInfo(day,its,ph){
   let photo=0,stockAmt=0,newStk=0;const rows=[];
   (day.photos||[]).forEach(x=>{const m=(ph||[]).find(p=>p.size===x.size)||{rate:0};const rate=(x.rate!=null?num(x.rate):num(m.rate));const sold=Math.max(0,num(x.count)-num(x.waste));const a=sold*rate;photo+=a;if(sold)rows.push({name:'Photo '+x.size,qty:sold,amt:a});});
@@ -965,9 +966,9 @@ async function renderAdmin(){
   const active=per.filter(p=>p.info&&p.info.gross>0).sort((a,b)=>b.info.gross-a.info.gross);
   const best=active[0];
 
-  /* staff accuracy across ALL saved days */
+  /* staff accuracy across saved days (from DATA_START) */
   const staff={};
-  per.forEach(p=>{Object.values(p.ents||{}).forEach(day=>{
+  per.forEach(p=>{Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;const day=p.ents[dt];
     const nm=(day.sign&&String(day.sign).trim())||'(no name)';
     const c=calcFull(day,p.its,p.ph);const ad=Math.abs(c.diff);
     if(!staff[nm])staff[nm]={days:0,perfect:0,mistakes:0,err:0};
@@ -1016,29 +1017,40 @@ async function renderAdmin(){
     return `<tr><td class="l">${esc(nm)}</td>${cells}<td class="l" style="font-weight:700">${maxQ>0?esc(SHOPS[maxId].name):'—'}</td></tr>`;
   }).join('')||`<tr><td colspan="${COUNTERS.length+2}" style="padding:12px;color:var(--muted)">Nothing sold on this day.</td></tr>`;
 
-  /* ---- extra / shortage ledger (cumulative, all counters, complete days only) ---- */
+  /* ---- extra / shortage ledger (cumulative from DATA_START, all counters, complete days only) ---- */
   const dayDiff={};
-  per.forEach(p=>{Object.keys(p.ents||{}).forEach(dt=>{const e=p.ents[dt];if(!(e.stock||[]).every(s=>hasClose(s.close)))return;dayDiff[dt]=(dayDiff[dt]||0)+calcFull(e,p.its,p.ph).diff;});});
+  per.forEach(p=>{Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;const e=p.ents[dt];if(!(e.stock||[]).every(s=>hasClose(s.close)))return;dayDiff[dt]=(dayDiff[dt]||0)+calcFull(e,p.its,p.ph).diff;});});
   const esDates=Object.keys(dayDiff).sort();let running=0;
   const esRows=esDates.map(dt=>{const nd=dayDiff[dt];running+=nd;const sh=nd>0?nd:0,ex=nd<0?-nd:0;
     return `<tr><td class="l">${pretty(dt)}</td><td class="n" style="color:var(--red)">${sh?inr(sh):'—'}</td><td class="n" style="color:var(--green)">${ex?inr(ex):'—'}</td><td class="n">${running>0?'Short '+inr(running):(running<0?'Extra '+inr(-running):'Nil')}</td></tr>`;}).join('')||`<tr><td colspan="4" style="padding:12px;color:var(--muted)">No completed days yet.</td></tr>`;
   const esOverall=running;
   const esBadge=esOverall>0?`<span style="color:var(--red);font-weight:800">SHORTAGE of ${inr(esOverall)}</span>`:(esOverall<0?`<span style="color:var(--green);font-weight:800">EXTRA of ${inr(-esOverall)}</span>`:'<b>Perfectly tallied</b>');
 
-  /* ---- waste record (cumulative) ---- */
+  /* ---- waste record (cumulative from DATA_START) ---- */
   const wasteT={pr:0,fr:0,mg:0,kc:0};const wastePer={};
-  per.forEach(p=>{let pr=0,fr=0,mg=0,kc=0;Object.values(p.ents||{}).forEach(e=>{
+  per.forEach(p=>{let pr=0,fr=0,mg=0,kc=0;Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;const e=p.ents[dt];
     (e.photos||[]).forEach(x=>pr+=num(x.waste));
     (e.stock||[]).forEach(s=>{const it=p.its.find(i=>i.id===s.id);if(!it)return;const w=num(s.waste);if(it.seg==='Frames')fr+=w;else if(it.seg==='Magnets')mg+=w;else if(it.seg==='Keychains')kc+=w;});
   });wastePer[p.id]={pr,fr,mg,kc};wasteT.pr+=pr;wasteT.fr+=fr;wasteT.mg+=mg;wasteT.kc+=kc;});
   const wasteRows=per.map(p=>{const w=wastePer[p.id]||{pr:0,fr:0,mg:0,kc:0};return `<tr><td class="l">${esc(p.name)}</td><td class="n">${w.pr}</td><td class="n">${w.fr}</td><td class="n">${w.mg}</td><td class="n">${w.kc}</td></tr>`;}).join('')
     +`<tr style="border-top:2px solid var(--line)"><td class="l"><b>Total</b></td><td class="n"><b>${wasteT.pr}</b></td><td class="n"><b>${wasteT.fr}</b></td><td class="n"><b>${wasteT.mg}</b></td><td class="n"><b>${wasteT.kc}</b></td></tr>`;
 
-  /* ---- tea expense tracker ---- */
+  /* ---- tea expense tracker (total from DATA_START) ---- */
   let teaToday=0,teaTotal=0;const teaPer={};
-  per.forEach(p=>{let tot=0;Object.values(p.ents||{}).forEach(e=>tot+=num(e.tea));teaPer[p.id]=tot;teaTotal+=tot;teaToday+=num(p.e&&p.e.tea);});
+  per.forEach(p=>{let tot=0;Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;tot+=num(p.ents[dt].tea);});teaPer[p.id]=tot;teaTotal+=tot;teaToday+=num(p.e&&p.e.tea);});
   const teaRows=per.map(p=>`<tr><td class="l">${esc(p.name)}</td><td class="n">${inr(num(p.e&&p.e.tea))}</td><td class="n">${inr(teaPer[p.id]||0)}</td></tr>`).join('')
     +`<tr style="border-top:2px solid var(--line)"><td class="l"><b>Total</b></td><td class="n"><b>${inr(teaToday)}</b></td><td class="n"><b>${inr(teaTotal)}</b></td></tr>`;
+
+  /* ---- total business per counter (till date) + monthly business ---- */
+  const bizPer={};let bizTotal=0;const monthMap={};
+  per.forEach(p=>{let tot=0;Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;const e=p.ents[dt];if(!(e.stock||[]).every(s=>hasClose(s.close)))return;const g=soldInfo(e,p.its,p.ph).gross;tot+=g;bizTotal+=g;const mo=dt.slice(0,7);if(!monthMap[mo])monthMap[mo]={total:0,per:{}};monthMap[mo].total+=g;monthMap[mo].per[p.id]=(monthMap[mo].per[p.id]||0)+g;});bizPer[p.id]=tot;});
+  const bizRows=per.map(p=>`<tr><td class="l">${esc(p.name)}</td><td class="n">${inr(bizPer[p.id]||0)}</td></tr>`).join('')
+    +`<tr style="border-top:2px solid var(--line)"><td class="l"><b>All counters</b></td><td class="n"><b>${inr(bizTotal)}</b></td></tr>`;
+  const moHead=COUNTERS.map(id=>`<th style="text-align:right">${esc(SHOPS[id].name)}</th>`).join('');
+  const months=Object.keys(monthMap).sort().reverse();
+  const moRows=months.map(mo=>{const m=monthMap[mo];const label=new Date(mo+'-01T00:00:00').toLocaleDateString('en-GB',{month:'short',year:'numeric'});
+    const cells=COUNTERS.map(id=>`<td class="n">${inr(m.per[id]||0)}</td>`).join('');
+    return `<tr><td class="l">${label}</td>${cells}<td class="n"><b>${inr(m.total)}</b></td></tr>`;}).join('')||`<tr><td colspan="${COUNTERS.length+2}" style="padding:12px;color:var(--muted)">No completed business yet.</td></tr>`;
 
   body.innerHTML=alertsCardHTML(alerts)+`
     <div class="card"><h2>All counters <span class="sub">${pretty(date)}</span></h2>
@@ -1088,7 +1100,13 @@ async function renderAdmin(){
       <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">Waste prints</th><th style="text-align:right">Waste frames</th><th style="text-align:right">Waste magnets</th><th style="text-align:right">Waste keychains</th></tr></thead><tbody>${wasteRows}</tbody></table></div></div>
 
     <div class="card"><h2>Tea expenses <span class="sub">— today &amp; running total</span></h2>
-      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">Tea (today)</th><th style="text-align:right">Tea (total)</th></tr></thead><tbody>${teaRows}</tbody></table></div></div>`;
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">Tea (today)</th><th style="text-align:right">Tea (total)</th></tr></thead><tbody>${teaRows}</tbody></table></div></div>
+
+    <div class="card"><h2>Total business till date <span class="sub">— per counter, from ${pretty(DATA_START)}</span></h2>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">Total business</th></tr></thead><tbody>${bizRows}</tbody></table></div></div>
+
+    <div class="card"><h2>Monthly business <span class="sub">— total by month &amp; counter</span></h2>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Month</th>${moHead}<th style="text-align:right">All counters</th></tr></thead><tbody>${moRows}</tbody></table></div></div>`;
   wireAlertButtons(alerts);fireAlertNotification(alerts);
 }
 
