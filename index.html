@@ -388,7 +388,8 @@ const DEF_EXP=['Tea','Sathiya','Akka','Less'];
 
 /* Photobox counter — Photos (print count) + Frames only */
 const DEF_ITEMS_PB=[
-  {id:'pb_f6x4',   seg:'Frames',name:'6x4 Frame',       rate:150},
+  {id:'pb_f6x4',   seg:'Frames',name:'6x4 Frame (80)',  rate:80},
+  {id:'pb_f6x4b',  seg:'Frames',name:'6x4 Frame (130)', rate:130},
   {id:'pb_f6x10a', seg:'Frames',name:'6x10 Frame (300)',rate:300},
   {id:'pb_f6x10b', seg:'Frames',name:'6x10 Frame (350)',rate:350},
   {id:'pb_f6x10c', seg:'Frames',name:'6x10 Frame (450)',rate:450},
@@ -444,6 +445,8 @@ const DEFAULTS={
   ootysr  :{items:withSupplies(DEF_ITEMS_OO), photo:[]},
 };
 function defItems(id){return DEFAULTS[id]?JSON.parse(JSON.stringify(DEFAULTS[id].items)):[];}
+/* use saved items, but append any NEW default products not yet present (keeps saved prices) */
+function mergeItems(id,saved){const def=defItems(id);if(!saved||!saved.length)return def;const have=new Set(saved.map(i=>i.id));const out=saved.slice();def.forEach(d=>{if(!have.has(d.id))out.push(d);});return out;}
 function defPhoto(id){return DEFAULTS[id]?JSON.parse(JSON.stringify(DEFAULTS[id].photo)):[];}
 
 /* ---------- helpers ---------- */
@@ -510,7 +513,7 @@ async function enterShop(s){
   $('#appTabs').classList.add('hide');            // staff: no History/Report, just the day sheet
   const d=await loadShopData(s.id);
   entries=d.entries||{};
-  items=d.items||defItems(s.id);
+  items=mergeItems(s.id,d.items);
   photoSizes=d.photo||defPhoto(s.id);
   addedStaff=await Store.get(KK.staff)||[];
   loadDay(todayStr());
@@ -920,7 +923,7 @@ function minFor(it){
 async function stockAlerts(){
   const out=[];
   for(const id of EDITABLE){
-    const d=await loadShopData(id);const ents=d.entries||{};const its=d.items||defItems(id);
+    const d=await loadShopData(id);const ents=d.entries||{};const its=mergeItems(id,d.items);
     const keys=Object.keys(ents).sort();if(!keys.length)continue;
     const e=ents[keys[keys.length-1]];
     (e.stock||[]).forEach(s=>{const it=its.find(i=>i.id===s.id);if(!it)return;
@@ -963,7 +966,7 @@ async function renderAdmin(){
   for(const id of COUNTERS){
     const d=await loadShopData(id);
     const ents=d.entries||{};
-    const its=d.items||defItems(id);
+    const its=mergeItems(id,d.items);
     const ph=d.photo||defPhoto(id);
     const e=ents[date];
     per.push({id,name:SHOPS[id].name,e,ents,its,ph,info:e?soldInfo(e,its,ph):null});
@@ -1249,7 +1252,7 @@ function renderEditPicker(){
 }
 async function listEditDays(){
   const id=$('#edShop').value;const d=await loadShopData(id);const ents=d.entries||{};
-  const its=d.items||defItems(id),ph=d.photo||defPhoto(id);
+  const its=mergeItems(id,d.items),ph=d.photo||defPhoto(id);
   const keys=Object.keys(ents).sort().reverse();
   const box=$('#edDays');
   if(!keys.length){box.innerHTML=`<div class="empty" style="padding:18px"><b>No saved days for ${esc(SHOPS[id].name)}</b>Pick a date above and open it to start.</div>`;return;}
@@ -1272,7 +1275,7 @@ async function adminEditCounter(id,date){
   $('#locTag').textContent=SHOPS[id].name+' (admin edit)';$('#whoName').textContent='Admin';
   const d=await loadShopData(id);
   entries=d.entries||{};
-  items=d.items||defItems(id);
+  items=mergeItems(id,d.items);
   photoSizes=d.photo||defPhoto(id);
   addedStaff=await Store.get(KK.staff)||[];
   loadDay(date);
@@ -1289,7 +1292,7 @@ $('#backToAdmin').addEventListener('click',async()=>{
 let priceShop='yercaud',priceItems=[],pricePhotos=[];
 async function renderPrices(){
   const d=await loadShopData(priceShop);
-  priceItems =(d.items&&d.items.length)?JSON.parse(JSON.stringify(d.items)) :defItems(priceShop);
+  priceItems =(d.items&&d.items.length)?mergeItems(priceShop,d.items) :defItems(priceShop);
   pricePhotos=(d.photo&&d.photo.length)?JSON.parse(JSON.stringify(d.photo)):defPhoto(priceShop);
   drawPrices();
 }
