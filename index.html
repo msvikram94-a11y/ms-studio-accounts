@@ -482,6 +482,7 @@ const inr=n=>'₹'+(Number(n)||0).toLocaleString('en-IN',{maximumFractionDigits:
 const num=v=>{const n=parseFloat(v);return isFinite(n)?n:0;};
 const pretty=d=>{const[y,m,dd]=d.split('-');return new Date(y,m-1,dd).toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});};
 function daysUntil(dateStr){if(!dateStr)return 0;const t=new Date(todayStr()+'T00:00:00');const d=new Date(dateStr+'T00:00:00');return Math.round((d-t)/86400000);}
+function wdayLong(dt){return new Date(dt+'T00:00:00').toLocaleDateString('en-GB',{weekday:'long'});}
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1900);}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 /* in-page dialogs (browser prompt/confirm are blocked in sandboxed previews) */
@@ -1126,6 +1127,35 @@ async function renderAdmin(){
     const cells=COUNTERS.map(id=>`<td class="n">${inr(m.per[id]||0)}</td>`).join('');
     return `<tr><td class="l">${label}</td>${cells}<td class="n"><b>${inr(m.total)}</b></td></tr>`;}).join('')||`<tr><td colspan="${COUNTERS.length+2}" style="padding:12px;color:var(--muted)">No completed business yet.</td></tr>`;
 
+  /* ---- day performance: best/worst day per counter + overall + day-of-week ---- */
+  const dayTotalAll={};
+  const perfPer=per.map(p=>{let best=null,worst=null;
+    Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;const e=p.ents[dt];if(!isClosed(e,dt))return;const g=soldInfo(e,p.its,p.ph).gross;
+      if(!best||g>best.g)best={dt,g};if(!worst||g<worst.g)worst={dt,g};
+      dayTotalAll[dt]=(dayTotalAll[dt]||0)+g;});
+    return{id:p.id,name:p.name,best,worst};});
+  let oBest=null,oWorst=null;Object.keys(dayTotalAll).forEach(dt=>{const g=dayTotalAll[dt];if(!oBest||g>oBest.g)oBest={dt,g};if(!oWorst||g<oWorst.g)oWorst={dt,g};});
+  const WD=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const dowSum={},dowN={};Object.keys(dayTotalAll).forEach(dt=>{const wd=new Date(dt+'T00:00:00').getDay();dowSum[wd]=(dowSum[wd]||0)+dayTotalAll[dt];dowN[wd]=(dowN[wd]||0)+1;});
+  const dowAvg=WD.map((n,i)=>({name:n,avg:dowN[i]?dowSum[i]/dowN[i]:0,n:dowN[i]||0}));
+  const dowActive=dowAvg.filter(d=>d.n>0);
+  const dowBest=dowActive.length?dowActive.slice().sort((a,b)=>b.avg-a.avg)[0]:null;
+  const dowWorst=dowActive.length?dowActive.slice().sort((a,b)=>a.avg-b.avg)[0]:null;
+  const cell=(x)=>x?`${pretty(x.dt)} <span style="color:var(--muted)">(${wdayLong(x.dt)})</span><br>${inr(x.g)}`:'—';
+  const perfRows=perfPer.map(p=>`<tr><td class="l">${esc(p.name)}</td><td class="l" style="color:var(--green)">${cell(p.best)}</td><td class="l" style="color:var(--red)">${cell(p.worst)}</td></tr>`).join('')
+    +`<tr style="border-top:2px solid var(--line)"><td class="l"><b>All counters</b></td><td class="l" style="color:var(--green)"><b>${cell(oBest)}</b></td><td class="l" style="color:var(--red)"><b>${cell(oWorst)}</b></td></tr>`;
+  const dowRows=dowAvg.map(d=>{const hi=dowBest&&d.name===dowBest.name&&d.n>0;const lo=dowWorst&&d.name===dowWorst.name&&d.n>0&&(!dowBest||d.name!==dowBest.name);
+    return `<tr><td class="l">${d.name}${hi?' <span class="badge" style="background:var(--green);color:#fff">Best</span>':(lo?' <span class="badge" style="background:var(--red);color:#fff">Lowest</span>':'')}</td><td class="n">${d.n}</td><td class="n">${d.n?inr(d.avg):'—'}</td></tr>`;}).join('');
+  const dayListRows=Object.keys(dayTotalAll).sort().reverse().map(dt=>`<tr><td class="l">${pretty(dt)}</td><td class="l">${wdayLong(dt)}</td><td class="n">${inr(dayTotalAll[dt])}</td></tr>`).join('')||`<tr><td colspan="3" style="padding:12px;color:var(--muted)">No completed days yet.</td></tr>`;
+  const perfCard=`
+    <div class="card"><h2>Best &amp; worst days <span class="sub">— completed days, with weekday</span></h2>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:left">Highest day</th><th style="text-align:left">Lowest day</th></tr></thead><tbody>${perfRows}</tbody></table></div>
+      <h2 style="margin-top:16px">By day of the week <span class="sub">— average business${dowBest?`; strongest is <b style="color:var(--green)">${dowBest.name}</b>${dowWorst&&dowWorst.name!==dowBest.name?`, weakest <b style="color:var(--red)">${dowWorst.name}</b>`:''}`:''}</span></h2>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Weekday</th><th style="text-align:right">Days</th><th style="text-align:right">Avg business</th></tr></thead><tbody>${dowRows}</tbody></table></div>
+      <h2 style="margin-top:16px">All days <span class="sub">— scroll to see every day</span></h2>
+      <div style="max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:10px"><table class="tbl" style="margin:0"><thead style="position:sticky;top:0;background:#fff"><tr><th class="l">Date</th><th class="l">Day</th><th style="text-align:right">Total business</th></tr></thead><tbody>${dayListRows}</tbody></table></div>
+    </div>`;
+
   /* ---- monthly profit / break-even tracker ---- */
   const curMonth=todayStr().slice(0,7);
   const curMonthLabel=new Date(curMonth+'-01T00:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'});
@@ -1269,7 +1299,9 @@ async function renderAdmin(){
       <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">Total business</th></tr></thead><tbody>${bizRows}</tbody></table></div></div>
 
     <div class="card"><h2>Monthly business <span class="sub">— total by month &amp; counter</span></h2>
-      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Month</th>${moHead}<th style="text-align:right">All counters</th></tr></thead><tbody>${moRows}</tbody></table></div></div>`;
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Month</th>${moHead}<th style="text-align:right">All counters</th></tr></thead><tbody>${moRows}</tbody></table></div></div>
+
+    ${perfCard}`;
   wireAlertButtons(alerts);fireAlertNotification(alerts);
   lastPer=per;lastDate=date;
   const rc=$('#revCounter');if(rc)rc.onchange=renderRevChart;
