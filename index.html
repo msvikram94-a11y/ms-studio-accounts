@@ -456,9 +456,19 @@ const DEFAULTS={
   pykarasr:{items:withSupplies(DEF_ITEMS_PY), photo:[]},
   ootysr  :{items:withSupplies(DEF_ITEMS_OO), photo:[]},
 };
-function defItems(id){return DEFAULTS[id]?JSON.parse(JSON.stringify(DEFAULTS[id].items)):[];}
-/* use saved items, but append any NEW default products not yet present (keeps saved prices) */
-function mergeItems(id,saved){const def=defItems(id);if(!saved||!saved.length)return def;const have=new Set(saved.map(i=>i.id));const out=saved.slice();def.forEach(d=>{if(!have.has(d.id))out.push(d);});return out;}
+/* cost (buying) price per product id → profit = selling rate − cost */
+const COST={
+  pb_f6x4:30,pb_f6x4b:40,pb_f6x10a:55,pb_f6x10b:65,pb_f6x10c:75,pb_f8x14a:130,pb_f8x14b:220,
+  py_f8x14_15:220,py_f8x14_1:130,py_f6x10:55,py_f6x4:40,py_kround:30,py_kwood:30,py_mag:30,py_omag:30,
+  oo_f6x4:40,oo_f6x10:55,oo_f8x12c:100,oo_f8x12k:150,oo_f8x20:450,oo_key:30,oo_mag:30,
+  f8x20:450,kround:30,kred:30,kwood:30,ymag:30,mag:30,
+};
+const PHOTO_COST={'6x4':20,'8x4':20,'6x10':45,'8x12':65,'8x14':75,'8x20':150};
+function defItems(id){const arr=DEFAULTS[id]?JSON.parse(JSON.stringify(DEFAULTS[id].items)):[];arr.forEach(it=>{if(it.cost==null&&COST[it.id]!=null)it.cost=COST[it.id];});return arr;}
+/* use saved items, append new default products, and fill in cost where missing (keeps saved prices) */
+function mergeItems(id,saved){const def=defItems(id);if(!saved||!saved.length)return def;const defById={};def.forEach(d=>defById[d.id]=d);const have=new Set();
+  const out=saved.map(s=>{have.add(s.id);if(s.cost==null){const c=(defById[s.id]&&defById[s.id].cost!=null)?defById[s.id].cost:COST[s.id];if(c!=null)return Object.assign({},s,{cost:c});}return s;});
+  def.forEach(d=>{if(!have.has(d.id))out.push(d);});return out;}
 function defPhoto(id){return DEFAULTS[id]?JSON.parse(JSON.stringify(DEFAULTS[id].photo)):[];}
 
 /* ---------- helpers ---------- */
@@ -751,13 +761,13 @@ $('#entryDate').addEventListener('change',e=>loadDay(e.target.value));
 const COUNTERS=['yercaud','photobox','pykara','ooty'];
 const DATA_START='2026-10-31';   // records/totals count from this date onward (older test data ignored)
 function soldInfo(day,its,ph){
-  let photo=0,stockAmt=0,newStk=0;const rows=[];
-  (day.photos||[]).forEach(x=>{const m=(ph||[]).find(p=>p.size===x.size)||{rate:0};const rate=(x.rate!=null?num(x.rate):num(m.rate));const sold=Math.max(0,num(x.count)-num(x.waste));const a=sold*rate;photo+=a;if(sold)rows.push({name:'Photo '+x.size,qty:sold,amt:a});});
-  (day.stock||[]).forEach(s=>{const it=(its||[]).find(i=>i.id===s.id);if(!it)return;if(it.supply)return;newStk+=num(s.newStock);const open=num(s.carried)+num(s.newStock);const sold=hasClose(s.close)?Math.max(0,open-num(s.close)-num(s.waste)):0;const rate=(s.rate!=null?num(s.rate):num(it.rate));const a=sold*rate;stockAmt+=a;if(sold)rows.push({name:it.name,qty:sold,amt:a});});
+  let photo=0,stockAmt=0,newStk=0,profitTot=0;const rows=[];
+  (day.photos||[]).forEach(x=>{const m=(ph||[]).find(p=>p.size===x.size)||{rate:0};const rate=(x.rate!=null?num(x.rate):num(m.rate));const uCost=(x.cost!=null?num(x.cost):(m.cost!=null?num(m.cost):(PHOTO_COST[x.size]||0)));const sold=Math.max(0,num(x.count)-num(x.waste));const a=sold*rate;const pf=sold*(rate-uCost);photo+=a;profitTot+=pf;if(sold)rows.push({name:'Photo '+x.size,qty:sold,amt:a,profit:pf});});
+  (day.stock||[]).forEach(s=>{const it=(its||[]).find(i=>i.id===s.id);if(!it)return;if(it.supply)return;newStk+=num(s.newStock);const open=num(s.carried)+num(s.newStock);const sold=hasClose(s.close)?Math.max(0,open-num(s.close)-num(s.waste)):0;const rate=(s.rate!=null?num(s.rate):num(it.rate));const uCost=num(it.cost);const a=sold*rate;const pf=sold*(rate-uCost);stockAmt+=a;profitTot+=pf;if(sold)rows.push({name:it.name,qty:sold,amt:a,profit:pf});});
   const tea=num(day.tea),less=num(day.less),o1=num(day.o1&&day.o1.amt),o2=num(day.o2&&day.o2.amt);
   const exp=tea+less+o1+o2,cash=num(day.cash),gpay=num(day.gpay),gross=photo+stockAmt;
   const missing=(day.stock||[]).filter(s=>!hasClose(s.close)).length;
-  return{photo,stock:stockAmt,gross,net:gross,exp,tea,less,o1,o2,cash,gpay,newStk,rows,missing,complete:missing===0};
+  return{photo,stock:stockAmt,gross,net:gross,exp,tea,less,o1,o2,cash,gpay,newStk,rows,profit:profitTot,missing,complete:missing===0};
 }
 function calcFull(day,its,ph){const r=soldInfo(day,its,ph);const collected=r.cash+r.gpay;r.collected=collected;r.diff=r.gross-r.exp-collected;return r;}
 function calc(day){return calcFull(day,items,photoSizes);}
@@ -1021,7 +1031,7 @@ async function renderAdmin(){
   let totG=0,totExp=0,totCash=0,totGpay=0,totNew=0,totUnits=0;const prod={};
   per.forEach(p=>{if(!p.info)return;const i=p.info;totG+=i.gross;totExp+=i.exp;totCash+=i.cash;totGpay+=i.gpay;totNew+=i.newStk;
     i.units=i.rows.reduce((a,r)=>a+r.qty,0);totUnits+=i.units;
-    i.rows.forEach(r=>{if(!prod[r.name])prod[r.name]={q:0,a:0};prod[r.name].q+=r.qty;prod[r.name].a+=r.amt;});});
+    i.rows.forEach(r=>{if(!prod[r.name])prod[r.name]={q:0,a:0,p:0};prod[r.name].q+=r.qty;prod[r.name].a+=r.amt;prod[r.name].p+=(r.profit||0);});});
   const totTax=totGpay*GST;
   const active=per.filter(p=>p.info&&p.info.gross>0).sort((a,b)=>b.info.gross-a.info.gross);
   const best=active[0];
@@ -1065,6 +1075,10 @@ async function renderAdmin(){
   const prodArr=Object.entries(prod).map(([n,v])=>({label:n,value:v.a})).sort((a,b)=>b.value-a.value).slice(0,8);
   const newRows=per.map(p=>`<tr><td class="l">${esc(p.name)}</td><td class="n">${p.info?p.info.newStk:'—'}</td></tr>`).join('');
   const soldRows=Object.entries(prod).sort((a,b)=>b[1].a-a[1].a).map(([n,v])=>`<tr><td class="l">${esc(n)}</td><td class="n">${v.q}</td><td class="n">${inr(v.a)}</td></tr>`).join('')||`<tr><td colspan="3" style="padding:12px;color:var(--muted)">Nothing sold this day.</td></tr>`;
+  const profEntries=Object.entries(prod).sort((a,b)=>b[1].p-a[1].p);
+  const totProfit=profEntries.reduce((a,[,v])=>a+v.p,0);const totRev=profEntries.reduce((a,[,v])=>a+v.a,0);
+  const profitRows=profEntries.map(([n,v])=>`<tr><td class="l">${esc(n)}</td><td class="n">${v.q}</td><td class="n">${inr(v.a)}</td><td class="n" style="color:var(--green);font-weight:700">${inr(v.p)}</td></tr>`).join('')
+    +(profEntries.length?`<tr style="border-top:2px solid var(--line)"><td class="l"><b>Total</b></td><td class="n"></td><td class="n"><b>${inr(totRev)}</b></td><td class="n"><b style="color:var(--green)">${inr(totProfit)}</b></td></tr>`:`<tr><td colspan="4" style="padding:12px;color:var(--muted)">Nothing sold this day.</td></tr>`);
 
   /* ---- product × counter matrix (selected date) ---- */
   const matProducts={};
@@ -1223,6 +1237,9 @@ async function renderAdmin(){
 
     <div class="card"><h2>Top products sold <span class="sub">— all counters, by value</span></h2>${barsH(prodArr)}</div>
 
+    <div class="card"><h2>Profit by product <span class="sub">${pretty(date)} — selling − cost, all counters</span></h2>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th><th style="text-align:right">Profit</th></tr></thead><tbody>${profitRows}</tbody></table></div></div>
+
     <div class="card"><h2>Product revenue <span class="sub">${pretty(date)} — pick a counter; change the date at the top</span></h2>
       <div class="row" style="margin-bottom:10px"><div class="col" style="max-width:240px"><label class="lbl">Counter</label>
         <select class="inp" id="revCounter"><option value="all">All counters</option>${COUNTERS.map(id=>`<option value="${id}">${esc(SHOPS[id].name)}</option>`).join('')}</select></div></div>
@@ -1356,7 +1373,7 @@ function drawPrices(){
       <table class="tbl"><thead><tr><th class="l">Size</th><th>Price ₹</th><th></th></tr></thead><tbody id="pPhoto"></tbody></table>
       <button class="addline" id="pAddPhoto">+ Add size</button></div>
     <div class="card"><h2>Items <span class="sub">— frames, keychains, magnets…</span></h2>
-      <table class="tbl"><thead><tr><th class="l">Item</th><th>Group</th><th>Price ₹</th><th></th></tr></thead><tbody id="pItems"></tbody></table>
+      <table class="tbl"><thead><tr><th class="l">Item</th><th>Group</th><th>Price ₹</th><th>Cost ₹</th><th></th></tr></thead><tbody id="pItems"></tbody></table>
       <button class="addline" id="pAddItem">+ Add item</button></div>
     <div class="actions"><button class="btn btn-save" id="pSave">Save prices to ${esc(SHOPS[priceShop].name)}</button></div>`;
   const pb=$('#pPhoto');
@@ -1368,10 +1385,11 @@ function drawPrices(){
     pb.appendChild(tr);});
   const ib=$('#pItems');
   priceItems.forEach((it,i)=>{const tr=el('tr');
-    tr.innerHTML=`<td><input class="pn" value="${esc(it.name)}" style="text-align:left"></td><td><input class="pg" value="${esc(it.seg||'Other')}" style="text-align:left"></td><td><input class="num" type="number" min="0" value="${it.rate||''}"></td><td><button class="x">×</button></td>`;
+    tr.innerHTML=`<td><input class="pn" value="${esc(it.name)}" style="text-align:left"></td><td><input class="pg" value="${esc(it.seg||'Other')}" style="text-align:left"></td><td><input class="prate num" type="number" min="0" value="${it.rate||''}"></td><td><input class="pcost num" type="number" min="0" value="${it.cost!=null?it.cost:''}"></td><td><button class="x">×</button></td>`;
     tr.querySelector('.pn').oninput=e=>it.name=e.target.value;
     tr.querySelector('.pg').oninput=e=>it.seg=e.target.value;
-    tr.querySelector('input[type=number]').oninput=e=>it.rate=num(e.target.value);
+    tr.querySelector('.prate').oninput=e=>it.rate=num(e.target.value);
+    tr.querySelector('.pcost').oninput=e=>it.cost=num(e.target.value);
     tr.querySelector('.x').onclick=()=>{priceItems.splice(i,1);drawPrices();};
     ib.appendChild(tr);});
   $('#priceShopSel').onchange=e=>{priceShop=e.target.value;renderPrices();};
