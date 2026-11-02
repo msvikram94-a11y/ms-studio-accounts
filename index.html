@@ -353,7 +353,7 @@ const DEFAULT_CFG={salary:250000,rent:350000,margin:50,purchases:0,loanInterest:
     {label:'Ooty Boat House',amount:1500000,date:'2027-01-01'},
     {label:'Yercaud',amount:1250000,date:'2027-02-26'},
   ]};
-let adminCfg=null;
+let adminCfg=null,lastPer=[],lastDate='';
 async function loadConfig(){const d=await loadShopData('settings');const c=Object.assign({},DEFAULT_CFG,(d&&d.items&&d.items[0])||{});if(!c.payments)c.payments=JSON.parse(JSON.stringify(DEFAULT_CFG.payments));return c;}
 async function saveConfig(cfg){await saveShopData('settings',{items:[cfg]});}
 const SHOPS={
@@ -433,11 +433,23 @@ const SUPPLIES=[
   {id:'roll8',seg:'Supplies',name:'Paper Roll 8 inch',rate:0,supply:true},
 ];
 const withSupplies=(arr)=>arr.concat(JSON.parse(JSON.stringify(SUPPLIES)));
+/* Photobox ink set: Cyan, Yellow, Magenta, Black, Sky Blue, Pink + Maintenance Cartridge (+ paper rolls) */
+const SUPPLIES_PB=[
+  {id:'ink_c',seg:'Supplies',name:'Ink — Cyan',rate:0,supply:true},
+  {id:'ink_y',seg:'Supplies',name:'Ink — Yellow',rate:0,supply:true},
+  {id:'ink_m',seg:'Supplies',name:'Ink — Magenta',rate:0,supply:true},
+  {id:'ink_k',seg:'Supplies',name:'Ink — Black',rate:0,supply:true},
+  {id:'pb_ink_sky',seg:'Supplies',name:'Ink — Sky Blue',rate:0,supply:true},
+  {id:'pb_ink_pink',seg:'Supplies',name:'Ink — Pink',rate:0,supply:true},
+  {id:'pb_maint',seg:'Supplies',name:'Maintenance Cartridge',rate:0,supply:true},
+  {id:'roll6',seg:'Supplies',name:'Paper Roll 6 inch',rate:0,supply:true},
+  {id:'roll8',seg:'Supplies',name:'Paper Roll 8 inch',rate:0,supply:true},
+];
 
 /* per-counter default products (used until the counter has saved/synced data) */
 const DEFAULTS={
   yercaud :{items:withSupplies(DEF_ITEMS),    photo:DEF_PHOTO},
-  photobox:{items:withSupplies(DEF_ITEMS_PB), photo:DEF_PHOTO_PB},
+  photobox:{items:DEF_ITEMS_PB.concat(JSON.parse(JSON.stringify(SUPPLIES_PB))), photo:DEF_PHOTO_PB},
   pykara  :{items:withSupplies(DEF_ITEMS_PY), photo:DEF_PHOTO_PY},
   ooty    :{items:withSupplies(DEF_ITEMS_OO), photo:DEF_PHOTO_OO},
   /* store rooms — same stock as their counter + supplies, movement only (no money, no photos) */
@@ -911,6 +923,16 @@ function barsH(data){ // [{label,value}]
   return `<div class="bars">`+data.map(d=>{const w=Math.round(d.value/max*100);
     return `<div class="barrow"><span class="blabel">${esc(d.label)}</span><span class="btrack"><span class="bfill" style="width:${w}%"></span></span><span class="bval">${inr(d.value)}</span></div>`;}).join('')+`</div>`;
 }
+function renderRevChart(){
+  const box=$('#revChart');if(!box)return;
+  const sel=$('#revCounter')?$('#revCounter').value:'all';
+  const map={};
+  lastPer.forEach(p=>{if(sel!=='all'&&p.id!==sel)return;if(!p.info)return;p.info.rows.forEach(r=>{map[r.name]=(map[r.name]||0)+r.amt;});});
+  const arr=Object.entries(map).map(([n,v])=>({label:n,value:v})).sort((a,b)=>b.value-a.value);
+  if(!arr.length){box.innerHTML=`<div class="empty" style="padding:16px">No sales for this selection on ${pretty(lastDate)}.</div>`;return;}
+  const total=arr.reduce((a,x)=>a+x.value,0);
+  box.innerHTML=barsH(arr)+`<div style="margin-top:10px;font-size:13px;color:var(--ink-2)">Total revenue: <b>${inr(total)}</b> · Top product: <b>${esc(arr[0].label)}</b> (${inr(arr[0].value)})</div>`;
+}
 
 /* ----- low-stock emergency alerts ----- */
 function minFor(it){
@@ -921,40 +943,58 @@ function minFor(it){
   return null;                            // no threshold (Cup, Other, photos)
 }
 async function stockAlerts(){
-  const out=[];
+  const overdue=[],watch=[];
+  const today=todayStr(),yday=yesterdayStr();
   for(const id of EDITABLE){
     const d=await loadShopData(id);const ents=d.entries||{};const its=mergeItems(id,d.items);
     const keys=Object.keys(ents).sort();if(!keys.length)continue;
     const e=ents[keys[keys.length-1]];
     (e.stock||[]).forEach(s=>{const it=its.find(i=>i.id===s.id);if(!it)return;
       const mn=minFor(it);if(mn==null)return;
-      const cur=hasClose(s.close)?num(s.close):(num(s.carried)+num(s.newStock)); // use entered close, else current opening
-      if(cur<mn)out.push({shop:SHOPS[id].name,item:it.name,cur,mn,asof:keys[keys.length-1]});
+      const cur=hasClose(s.close)?num(s.close):(num(s.carried)+num(s.newStock));
+      if(cur>=mn)return;
+      // refilled in the last 2 days? (new stock added today or yesterday)
+      const refilled=[today,yday].some(dt=>{const en=ents[dt];if(!en)return false;const st=(en.stock||[]).find(x=>x.id===s.id);return st&&num(st.newStock)>0;});
+      const rec={shop:SHOPS[id].name,item:it.name,cur,mn};
+      if(refilled)watch.push(rec); else overdue.push(rec);   // not refilled in 2 days → overdue (ping)
     });
   }
-  out.sort((a,b)=>(a.cur-a.mn)-(b.cur-b.mn));
-  return out;
+  const sort=a=>a.sort((x,y)=>(x.cur-x.mn)-(y.cur-y.mn));
+  return {overdue:sort(overdue),watch:sort(watch)};
 }
-function alertsCardHTML(alerts){
-  if(!alerts.length) return `<div class="card" style="border-color:#bfe6d2;background:#f2fbf6"><h2 style="color:var(--green)">✓ Stock levels OK</h2><div style="font-size:13.5px;color:var(--ink-2)">No counter or store room is below its minimum stock level right now.</div></div>`;
-  const rows=alerts.map(a=>`<tr><td class="l">${esc(a.shop)}</td><td class="l">${esc(a.item)}</td><td class="n" style="color:var(--red);font-weight:800">${a.cur}</td><td class="n">${a.mn}</td></tr>`).join('');
-  return `<div class="card" style="border:2px solid var(--red);background:#fdf1ef">
-    <h2 style="color:var(--red)">⚠ EMERGENCY — ${alerts.length} stock shortage${alerts.length>1?'s':''}</h2>
-    <div style="font-size:13px;color:var(--ink-2);margin-bottom:10px">These items are below the safe level and need restocking. <button class="btn-ghost" id="enableAlerts" style="margin-left:6px">🔔 Enable pop-up alerts</button></div>
-    <table class="tbl"><thead><tr><th class="l">Where</th><th class="l">Item</th><th style="text-align:right">In stock</th><th style="text-align:right">Minimum</th></tr></thead><tbody>${rows}</tbody></table>
-  </div>`;
+function alertsCardHTML(al){
+  const overdue=al.overdue||[],watch=al.watch||[];
+  if(!overdue.length&&!watch.length) return `<div class="card" style="border-color:#bfe6d2;background:#f2fbf6"><h2 style="color:var(--green)">✓ Stock levels OK</h2><div style="font-size:13.5px;color:var(--ink-2)">No counter or store room is below its minimum stock level right now.</div></div>`;
+  let html='';
+  if(overdue.length){
+    const rows=overdue.map(a=>`<tr><td class="l">${esc(a.shop)}</td><td class="l">${esc(a.item)}</td><td class="n" style="color:var(--red);font-weight:800">${a.cur}</td><td class="n">${a.mn}</td></tr>`).join('');
+    html+=`<div class="card" style="border:2px solid var(--red);background:#fdf1ef">
+      <h2 style="color:var(--red)">⚠ REFILL NOW — ${overdue.length} item${overdue.length>1?'s':''} low &amp; not refilled in 2 days</h2>
+      <div style="font-size:13px;color:var(--ink-2);margin-bottom:10px">Low for more than 2 days with no new stock added. <button class="btn-ghost" id="enableAlerts" style="margin-left:6px">🔔 Enable pop-up alerts</button></div>
+      <table class="tbl"><thead><tr><th class="l">Where</th><th class="l">Item</th><th style="text-align:right">In stock</th><th style="text-align:right">Minimum</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  if(watch.length){
+    const rows=watch.map(a=>`<tr><td class="l">${esc(a.shop)}</td><td class="l">${esc(a.item)}</td><td class="n" style="color:var(--amber-d);font-weight:700">${a.cur}</td><td class="n">${a.mn}</td></tr>`).join('');
+    html+=`<div class="card" style="border-color:#f1dcae;background:#fffaf0">
+      <h2 style="color:var(--amber-d)">Low — being refilled <span class="sub">within the 2-day window, no action needed yet</span></h2>
+      <table class="tbl"><thead><tr><th class="l">Where</th><th class="l">Item</th><th style="text-align:right">In stock</th><th style="text-align:right">Minimum</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  return html;
 }
-function wireAlertButtons(alerts){
+function wireAlertButtons(al){
   const b=$('#enableAlerts');if(b)b.onclick=async()=>{
     if(!('Notification'in window)){toast('Pop-up alerts not supported on this device');return;}
     const perm=await Notification.requestPermission();
-    if(perm==='granted'){toast('Alerts on — you\'ll be notified of shortages');fireAlertNotification(alerts);}
+    if(perm==='granted'){toast('Alerts on — you\'ll be notified when something stays low past 2 days');fireAlertNotification(al,true);}
     else toast('Allow notifications in your browser to get alerts');
   };
 }
-function fireAlertNotification(alerts){
-  try{if(('Notification'in window)&&Notification.permission==='granted'&&alerts.length){
-    new Notification('MS Studio — stock shortage',{body:alerts.slice(0,5).map(a=>`${a.shop}: ${a.item} (${a.cur})`).join('\n')+(alerts.length>5?`\n+${alerts.length-5} more`:'')});
+function fireAlertNotification(al,force){
+  const overdue=(al&&al.overdue)||[];if(!overdue.length)return;
+  // ping at most once per day (no daily nagging) unless the user just enabled alerts
+  try{const key='msacc_lastping';const today=todayStr();if(!force&&localStorage.getItem(key)===today)return;localStorage.setItem(key,today);}catch(e){}
+  try{if(('Notification'in window)&&Notification.permission==='granted'){
+    new Notification('MS Studio — refill needed',{body:overdue.slice(0,5).map(a=>`${a.shop}: ${a.item} (${a.cur})`).join('\n')+(overdue.length>5?`\n+${overdue.length-5} more`:'')});
   }}catch(e){}
 }
 
@@ -1183,6 +1223,11 @@ async function renderAdmin(){
 
     <div class="card"><h2>Top products sold <span class="sub">— all counters, by value</span></h2>${barsH(prodArr)}</div>
 
+    <div class="card"><h2>Product revenue <span class="sub">${pretty(date)} — pick a counter; change the date at the top</span></h2>
+      <div class="row" style="margin-bottom:10px"><div class="col" style="max-width:240px"><label class="lbl">Counter</label>
+        <select class="inp" id="revCounter"><option value="all">All counters</option>${COUNTERS.map(id=>`<option value="${id}">${esc(SHOPS[id].name)}</option>`).join('')}</select></div></div>
+      <div id="revChart"></div></div>
+
     <div class="row">
       <div class="col" style="min-width:260px"><div class="card"><h2>New stock taken today</h2>
         <table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">New units</th></tr></thead><tbody>${newRows}</tbody></table></div></div>
@@ -1209,6 +1254,9 @@ async function renderAdmin(){
     <div class="card"><h2>Monthly business <span class="sub">— total by month &amp; counter</span></h2>
       <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Month</th>${moHead}<th style="text-align:right">All counters</th></tr></thead><tbody>${moRows}</tbody></table></div></div>`;
   wireAlertButtons(alerts);fireAlertNotification(alerts);
+  lastPer=per;lastDate=date;
+  const rc=$('#revCounter');if(rc)rc.onchange=renderRevChart;
+  renderRevChart();
   const cs=$('#cfgSave');if(cs)cs.onclick=async()=>{
     Object.assign(adminCfg,{salary:num($('#cfgSalary').value),rent:num($('#cfgRent').value),margin:num($('#cfgMargin').value)||50,purchases:num($('#cfgPurch').value),
       loanInterest:num($('#cfgLoanInt').value),loan:num($('#cfgLoan').value),ssy:num($('#cfgSsy').value),rentalIncome:num($('#cfgRentalInc').value)});
