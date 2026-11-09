@@ -131,6 +131,24 @@
   /* store rooms: pure stock movement — no waste, no cash/expenses card */
   body.storeroom .col-waste{display:none !important}
   body.storeroom #collectCard{display:none !important}
+  .card-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .card-hd h2{margin:0;padding-top:6px}
+  .rng-btn{display:inline-flex;align-items:center;gap:6px;max-width:100%;background:#fff6e8;border:1px solid #f1dcae;color:var(--ink-2);border-radius:20px;padding:6px 11px;font-size:12.5px;font-weight:600;cursor:pointer;text-align:left}
+  .rng-btn:hover{border-color:var(--amber)} .rng-btn b{color:var(--amber-d)} .rng-btn .car{color:var(--amber-d);font-size:11px}
+  .rng-btn .rng-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rng-btn.wide{width:100%;border-radius:10px;padding:10px 12px;font-size:14px;justify-content:space-between}
+  #rngPop{position:absolute;z-index:60;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(16,20,30,.18);padding:14px}
+  .rp-h{font-weight:800;font-size:13px;margin-bottom:10px}
+  .rp-presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+  .rp-presets button{border:1px solid var(--line);background:#fbfcfe;border-radius:20px;padding:6px 10px;font-size:12.5px;font-weight:600;color:var(--ink-2);cursor:pointer}
+  .rp-presets button.on{background:var(--amber);border-color:var(--amber);color:#231803}
+  .rp-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .rp-note{font-size:11px;color:var(--muted);margin-top:5px}
+  .rp-act{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}.rp-act .btn{padding:9px 16px;font-size:14px}
+  .card.okb{border:2px solid #bfe6d2}.card.warnb{border:2px solid #f1dcae}
+  .scrollbox{max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:10px}.scrollbox thead{position:sticky;top:0;background:#fff}
+  .tlegend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:8px;font-size:12.5px}.tlegend .tl{display:flex;align-items:center;gap:6px}.tlegend .sw{width:12px;height:4px;border-radius:2px}
+  @media(min-width:900px){.summary.s8{grid-template-columns:repeat(4,1fr)}}
   @media(max-width:620px){.summary{grid-template-columns:repeat(2,1fr)}.who .lbl2{display:none}}
   @media print{.topbar,.tabs,.no-print,.addline,.x{display:none !important}body{background:#fff}.card{box-shadow:none;border:1px solid #ccc}}
 </style>
@@ -298,15 +316,18 @@
   </div>
   <div class="tabs" style="max-width:640px"><button data-adtab="dash" class="active">Dashboard</button><button data-adtab="edit">Edit accounts</button><button data-adtab="prices">Products &amp; prices</button></div>
   <div class="card no-print" id="adDateCard">
-    <div class="row" style="align-items:flex-end">
-      <div class="col" style="max-width:220px"><label class="lbl">Date</label><input class="inp" type="date" id="adDate"></div>
-      <div class="col" style="max-width:150px;display:flex;align-items:flex-end"><button class="btn btn-save" id="adRefresh" style="flex:1">Refresh</button></div>
+    <div class="row" style="align-items:center">
+      <div class="col" style="min-width:240px"><label class="lbl">Date range — all cards</label><button type="button" class="rng-btn wide" data-rng="__all" id="adAllRange"></button></div>
+      <div class="col" style="max-width:280px;display:flex;gap:8px;align-items:flex-end;padding-top:18px"><button class="btn-ghost" id="adReset" style="flex:1">Reset each card</button><button class="btn btn-save" id="adRefresh" style="flex:1">Refresh</button></div>
     </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:8px">Every card below has its own 📅 date range and shop menu. Change one card without touching the others, or set them all here.</div>
   </div>
   <div id="adBody"></div>
   <div id="adPrices" class="hide"></div>
   <div id="adEdit" class="hide"></div>
 </main>
+
+<div id="rngPop" class="hide"></div>
 
 <div id="modal" class="modal-bg hide">
   <div class="modal">
@@ -909,15 +930,14 @@ let adminTimer=null;
 async function showAdmin(){
   $('#login').classList.add('hide');$('#app').classList.add('hide');$('#notready').classList.add('hide');
   $('#admin').classList.remove('hide');
-  if(!$('#adDate').value)$('#adDate').value=todayStr();
   await renderAdmin();
   setAdTab('dash');
   if(adminTimer)clearInterval(adminTimer);
-  adminTimer=setInterval(()=>{if(!$('#admin').classList.contains('hide')&&!$('#adBody').classList.contains('hide'))renderAdmin();},120000); // re-check stock every 2 min
+  adminTimer=setInterval(()=>{if(!rngFor&&!$('#admin').classList.contains('hide')&&!$('#adBody').classList.contains('hide'))renderAdmin();},120000); // re-check stock every 2 min
 }
 $('#adLogout').addEventListener('click',()=>{$('#admin').classList.add('hide');doLogout();});
 $('#adRefresh').addEventListener('click',renderAdmin);
-$('#adDate').addEventListener('change',renderAdmin);
+$('#adReset').addEventListener('click',()=>{cardRanges={};saveRanges();updateAllBtn();renderAllCards();toast('Each card back to its default range');});
 
 function donut(data){ // [{label,value,color}]
   const total=data.reduce((a,d)=>a+d.value,0)||1;
@@ -933,16 +953,6 @@ function barsH(data){ // [{label,value}]
   const max=Math.max(1,...data.map(d=>d.value));
   return `<div class="bars">`+data.map(d=>{const w=Math.round(d.value/max*100);
     return `<div class="barrow"><span class="blabel">${esc(d.label)}</span><span class="btrack"><span class="bfill" style="width:${w}%"></span></span><span class="bval">${inr(d.value)}</span></div>`;}).join('')+`</div>`;
-}
-function renderRevChart(){
-  const box=$('#revChart');if(!box)return;
-  const sel=$('#revCounter')?$('#revCounter').value:'all';
-  const map={};
-  lastPer.forEach(p=>{if(sel!=='all'&&p.id!==sel)return;if(!p.info)return;p.info.rows.forEach(r=>{map[r.name]=(map[r.name]||0)+r.amt;});});
-  const arr=Object.entries(map).map(([n,v])=>({label:n,value:v})).sort((a,b)=>b.value-a.value);
-  if(!arr.length){box.innerHTML=`<div class="empty" style="padding:16px">No sales for this selection on ${pretty(lastDate)}.</div>`;return;}
-  const total=arr.reduce((a,x)=>a+x.value,0);
-  box.innerHTML=barsH(arr)+`<div style="margin-top:10px;font-size:13px;color:var(--ink-2)">Total revenue: <b>${inr(total)}</b> · Top product: <b>${esc(arr[0].label)}</b> (${inr(arr[0].value)})</div>`;
 }
 
 /* ----- low-stock emergency alerts ----- */
@@ -1009,312 +1019,336 @@ function fireAlertNotification(al,force){
   }}catch(e){}
 }
 
-async function renderAdmin(){
-  const date=$('#adDate').value||todayStr();
-  const alerts=await stockAlerts();
-  const cfg=await loadConfig();adminCfg=cfg;
-  const per=[];
-  for(const id of COUNTERS){
-    const d=await loadShopData(id);
-    const ents=d.entries||{};
-    const its=mergeItems(id,d.items);
-    const ph=d.photo||defPhoto(id);
-    const e=ents[date];
-    per.push({id,name:SHOPS[id].name,e,ents,its,ph,info:e?soldInfo(e,its,ph):null});
-  }
-  const body=$('#adBody');
-  if(!per.some(p=>p.info)){
-    body.innerHTML=alertsCardHTML(alerts)+`<div class="card"><div class="empty"><b>No entries for ${pretty(date)}</b>No counter has saved this day yet. Save a day on a counter, then refresh here.</div></div>`;
-    wireAlertButtons(alerts);fireAlertNotification(alerts);
-    return;
-  }
-  const GST=0.18;
-  let totG=0,totExp=0,totCash=0,totGpay=0,totNew=0,totUnits=0;const prod={};
-  per.forEach(p=>{if(!p.info)return;const i=p.info;totG+=i.gross;totExp+=i.exp;totCash+=i.cash;totGpay+=i.gpay;totNew+=i.newStk;
-    i.units=i.rows.reduce((a,r)=>a+r.qty,0);totUnits+=i.units;
-    i.rows.forEach(r=>{if(!prod[r.name])prod[r.name]={q:0,a:0,p:0};prod[r.name].q+=r.qty;prod[r.name].a+=r.amt;prod[r.name].p+=(r.profit||0);});});
-  const totTax=totGpay*GST;
-  const active=per.filter(p=>p.info&&p.info.gross>0).sort((a,b)=>b.info.gross-a.info.gross);
-  const best=active[0];
+/* ================= DASHBOARD: every card has its own date range + shop ================= */
+const RANGE_KEY='msacc_cardranges_v1';
+let cardRanges={};try{cardRanges=JSON.parse(localStorage.getItem(RANGE_KEY)||'{}')||{};}catch(e){cardRanges={};}
+function saveRanges(){try{localStorage.setItem(RANGE_KEY,JSON.stringify(cardRanges));}catch(e){}}
+function addDays(s,n){const d=new Date(s+'T00:00:00');d.setDate(d.getDate()+n);return d.toLocaleDateString('en-CA');}
+const PRESETS=[['today','Today'],['yesterday','Yesterday'],['7d','Last 7 days'],['30d','Last 30 days'],['month','This month'],['lastmonth','Last month'],['all','All time']];
+function presetRange(k){const t=todayStr();const d=new Date(t+'T00:00:00');
+  switch(k){
+    case 'today':return{from:t,to:t};
+    case 'yesterday':{const y=addDays(t,-1);return{from:y,to:y};}
+    case '7d':return{from:addDays(t,-6),to:t};
+    case '30d':return{from:addDays(t,-29),to:t};
+    case 'month':return{from:t.slice(0,8)+'01',to:t};
+    case 'lastmonth':{const f=new Date(d.getFullYear(),d.getMonth()-1,1),l=new Date(d.getFullYear(),d.getMonth(),0);return{from:f.toLocaleDateString('en-CA'),to:l.toLocaleDateString('en-CA')};}
+    default:return{from:DATA_START,to:t};
+  }}
+/* card registry defaults: d = default preset, shop = card supports a shop filter */
+const CARD_DEF={
+  summary:{d:'today',shop:true}, trend:{d:'30d',shop:true}, profit:{d:'month',shop:false},
+  collect:{d:'today',shop:true}, staff:{d:'all',shop:true}, each:{d:'today',shop:true},
+  share:{d:'today',shop:false}, prods:{d:'today',shop:true}, pprofit:{d:'today',shop:true},
+  newstock:{d:'today',shop:true}, sold:{d:'today',shop:true}, matrix:{d:'today',shop:false},
+  ledger:{d:'all',shop:true}, waste:{d:'all',shop:true}, tea:{d:'all',shop:true},
+  biz:{d:'all',shop:true}, monthly:{d:'all',shop:true}, perf:{d:'all',shop:true}
+};
+function getRange(id){
+  const c=cardRanges[id]||{};const def=CARD_DEF[id]||{d:'today'};
+  const preset=c.preset!==undefined?c.preset:(c.from?null:def.d);
+  let r=preset?presetRange(preset):{from:c.from,to:c.to};
+  let from=r.from||DATA_START,to=r.to||todayStr();
+  if(from<DATA_START)from=DATA_START;
+  if(to<from)to=from;
+  return{from,to,preset,shop:(def.shop!==false&&c.shop)||'all'};
+}
+function shortD(s,yr){return new Date(s+'T00:00:00').toLocaleDateString('en-GB',yr?{day:'numeric',month:'short',year:'numeric'}:{day:'numeric',month:'short'});}
+function rangeText(r){
+  const p=r.preset&&PRESETS.find(x=>x[0]===r.preset);
+  const span=r.from===r.to?shortD(r.from,true):shortD(r.from,r.from.slice(0,4)!==r.to.slice(0,4))+' – '+shortD(r.to,true);
+  return p?`${p[1]} (${span})`:span;
+}
+function shopText(s){return s==='all'?'All shops':SHOPS[s].name;}
+function rangeCtl(id){const r=getRange(id);const def=CARD_DEF[id]||{};
+  return `<button type="button" class="rng-btn no-print" data-rng="${id}"><span class="rng-ic">📅</span><span class="rng-t">${esc(rangeText(r))}${def.shop!==false?` · <b>${esc(shopText(r.shop))}</b>`:''}</span><span class="car">▾</span></button>`;}
 
-  /* staff accuracy across saved days (from DATA_START) */
-  const staff={};
-  per.forEach(p=>{Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;const day=p.ents[dt];if(!isClosed(day,dt))return;
-    const nm=(day.sign&&String(day.sign).trim())||'(no name)';
-    const c=calcFull(day,p.its,p.ph);const ad=Math.abs(c.diff);
-    if(!staff[nm])staff[nm]={days:0,perfect:0,mistakes:0,err:0};
-    staff[nm].days++;staff[nm].err+=ad;if(ad<1)staff[nm].perfect++;else staff[nm].mistakes++;
-  });});
-  const named=Object.entries(staff).filter(([n])=>n!=='(no name)');
-  const bestStaff = named.length?named.slice().sort((a,b)=> b[1].perfect-a[1].perfect || a[1].err-b[1].err)[0]:null;
-  const worstStaff= named.length?named.slice().sort((a,b)=> b[1].mistakes-a[1].mistakes || b[1].err-a[1].err)[0]:null;
-  const staffRows=Object.entries(staff).sort((a,b)=>b[1].days-a[1].days).map(([n,v])=>{
-    const isBest=bestStaff&&n===bestStaff[0]&&v.mistakes<v.days;
-    const isWorst=worstStaff&&n===worstStaff[0]&&v.mistakes>0&&(!bestStaff||n!==bestStaff[0]);
-    const tag=isBest?' <span class="badge" style="background:var(--green);color:#fff">Most accurate</span>':(isWorst?' <span class="badge" style="background:var(--red);color:#fff">Most mistakes</span>':'');
-    return `<tr><td class="l">${esc(n)}${tag}</td><td class="n">${v.days}</td><td class="n">${v.perfect}</td><td class="n">${v.mistakes}</td><td class="n">${inr(v.err)}</td></tr>`;
-  }).join('');
-  const staffCallout=(bestStaff?`Most accurate: <b>${esc(bestStaff[0])}</b> — ${bestStaff[1].perfect} of ${bestStaff[1].days} days tallied perfectly. `:'')+
-    (worstStaff&&worstStaff[1].mistakes>0&&(!bestStaff||worstStaff[0]!==bestStaff[0])?`Most mistakes: <b>${esc(worstStaff[0])}</b> — ${worstStaff[1].mistakes} day(s) off, ${inr(worstStaff[1].err)} total difference.`:'');
+/* ---- range popover ---- */
+let rngFor=null;
+function openRangePop(id,btn){
+  const pop=$('#rngPop');rngFor=id;
+  const isAll=id==='__all';
+  const r=isAll?(cardRanges.__all?getRangeAll():presetRange('today')):getRange(id);
+  const showShop=isAll||(CARD_DEF[id]&&CARD_DEF[id].shop!==false);
+  pop.innerHTML=`<div class="rp-h">${isAll?'Set date range for ALL cards':'Date range for this card'}</div>
+    <div class="rp-presets">${PRESETS.map(([k,l])=>`<button type="button" data-p="${k}" class="${r.preset===k?'on':''}">${l}</button>`).join('')}</div>
+    <div class="rp-row"><div><label class="lbl">From</label><input class="inp" type="date" id="rpFrom" min="${DATA_START}" max="${todayStr()}" value="${r.from}"></div>
+      <div><label class="lbl">To</label><input class="inp" type="date" id="rpTo" min="${DATA_START}" max="${todayStr()}" value="${r.to}"></div></div>
+    ${showShop?`<div style="margin-top:10px"><label class="lbl">Shop</label><select class="inp" id="rpShop"><option value="all">All shops</option>${COUNTERS.map(c=>`<option value="${c}" ${r.shop===c?'selected':''}>${esc(SHOPS[c].name)}</option>`).join('')}</select>${isAll?'<div class="rp-note">Shop is applied only to cards that can be split by shop.</div>':''}</div>`:''}
+    <div class="rp-act"><button type="button" class="btn-ghost" id="rpCancel">Cancel</button><button type="button" class="btn btn-save" id="rpApply">Apply</button></div>`;
+  pop.classList.remove('hide');
+  const b=btn.getBoundingClientRect();const w=Math.min(330,window.innerWidth-24);pop.style.width=w+'px';
+  let left=b.left+window.scrollX;if(left+w>window.scrollX+window.innerWidth-12)left=window.scrollX+window.innerWidth-12-w;if(left<12)left=12;
+  pop.style.left=left+'px';pop.style.top=(b.bottom+window.scrollY+6)+'px';
+  let chosen=r.preset||null;
+  pop.querySelectorAll('[data-p]').forEach(x=>x.onclick=()=>{chosen=x.dataset.p;const pr=presetRange(chosen);$('#rpFrom').value=pr.from;$('#rpTo').value=pr.to;
+    pop.querySelectorAll('[data-p]').forEach(y=>y.classList.toggle('on',y===x));});
+  const manual=()=>{chosen=null;pop.querySelectorAll('[data-p]').forEach(y=>y.classList.remove('on'));};
+  $('#rpFrom').onchange=manual;$('#rpTo').onchange=manual;
+  $('#rpCancel').onclick=closeRangePop;
+  $('#rpApply').onclick=()=>{
+    let f=$('#rpFrom').value||DATA_START,t=$('#rpTo').value||todayStr();if(t<f){const s=f;f=t;t=s;}
+    const shopSel=$('#rpShop')?$('#rpShop').value:'all';
+    const val=chosen?{preset:chosen}:{preset:null,from:f,to:t};
+    if(isAll){
+      cardRanges={__all:Object.assign({},val,{shop:shopSel})};
+      Object.keys(CARD_DEF).forEach(k=>{cardRanges[k]=Object.assign({},val,{shop:CARD_DEF[k].shop!==false?shopSel:'all'});});
+      saveRanges();closeRangePop();updateAllBtn();renderAllCards();
+    }else{
+      cardRanges[id]=Object.assign({},val,{shop:shopSel});saveRanges();closeRangePop();renderCard(id);
+    }};
+}
+function getRangeAll(){const c=cardRanges.__all||{};const r=c.preset?presetRange(c.preset):{from:c.from||todayStr(),to:c.to||todayStr()};return{from:r.from,to:r.to,preset:c.preset||null,shop:c.shop||'all'};}
+function closeRangePop(){$('#rngPop').classList.add('hide');rngFor=null;}
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-rng]');
+  if(b){e.preventDefault();if(rngFor===b.dataset.rng){closeRangePop();return;}openRangePop(b.dataset.rng,b);return;}
+  if(rngFor&&!e.target.closest('#rngPop'))closeRangePop();
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&rngFor)closeRangePop();});
+function updateAllBtn(){const el=$('#adAllRange');if(!el)return;
+  el.innerHTML=cardRanges.__all?`<span class="rng-ic">📅</span><span class="rng-t">${esc(rangeText(getRangeAll()))} · <b>${esc(shopText(getRangeAll().shop))}</b></span><span class="car">▾</span>`
+    :`<span class="rng-ic">📅</span><span class="rng-t">Each card has its own range — tap to set all</span><span class="car">▾</span>`;}
 
-  const cards=per.map(p=>{
-    if(!p.info)return `<div class="cc off"><div class="ccn">${esc(p.name)}</div><div class="ccm" style="margin-top:8px">No entry for this day</div></div>`;
-    const isBest=best&&p.id===best.id;
-    const incomplete=p.info.missing>0?`<div style="color:var(--red);font-weight:700;font-size:11.5px;margin-top:6px">⚠ Closing incomplete — ${p.info.missing} item(s) not entered</div>`:'';
-    return `<div class="cc ${isBest?'best':''}"><div class="ccn"><span>${esc(p.name)}</span>${isBest?'<span class="badge">Top</span>':''}</div>
-      <div class="ccg">${inr(p.info.gross)}</div>
-      <div class="ccm">Cash ${inr(p.info.cash)} · GPay ${inr(p.info.gpay)}<br>GST 18% on GPay ${inr(p.info.gpay*GST)}<br>Products sold ${p.info.units} · New stock ${p.info.newStk}<br>Expenses ${inr(p.info.exp)}</div>${incomplete}</div>`;
-  }).join('');
+/* ---- data helpers ---- */
+let AD=null; // {per,cfg,alerts}
+function shopsFor(r){return AD.per.filter(p=>r.shop==='all'||p.id===r.shop);}
+function datesIn(p,r,closedOnly){return Object.keys(p.ents||{}).filter(dt=>dt>=r.from&&dt<=r.to&&dt>=DATA_START&&(!closedOnly||isClosed(p.ents[dt],dt))).sort();}
+/* aggregate everything for a range: by shop, by product, by date */
+function agg(r,closedOnly,allShops){
+  const list=allShops?AD.per:shopsFor(r);
+  const byShop={},prod={},byDate={};const tot={gross:0,cash:0,gpay:0,exp:0,tea:0,newStk:0,units:0,profit:0,days:0};
+  list.forEach(p=>{const s={gross:0,cash:0,gpay:0,exp:0,tea:0,newStk:0,units:0,profit:0,days:0,missing:0};
+    datesIn(p,r,closedOnly).forEach(dt=>{const e=p.ents[dt];const i=soldInfo(e,p.its,p.ph);
+      s.gross+=i.gross;s.cash+=i.cash;s.gpay+=i.gpay;s.exp+=i.exp;s.tea+=i.tea;s.newStk+=i.newStk;s.profit+=i.profit;s.days++;s.missing+=i.missing;
+      const u=i.rows.reduce((a,x)=>a+x.qty,0);s.units+=u;
+      i.rows.forEach(x=>{if(!prod[x.name])prod[x.name]={q:0,a:0,p:0,by:{}};const pr=prod[x.name];pr.q+=x.qty;pr.a+=x.amt;pr.p+=(x.profit||0);pr.by[p.id]=(pr.by[p.id]||0)+x.qty;});
+      if(!byDate[dt])byDate[dt]={total:0,per:{}};byDate[dt].total+=i.gross;byDate[dt].per[p.id]=(byDate[dt].per[p.id]||0)+i.gross;});
+    byShop[p.id]=s;Object.keys(tot).forEach(k=>tot[k]+=s[k]);});
+  return{list,byShop,prod,byDate,tot};
+}
+const GST=0.18;
+const noData=(r,msg)=>`<div class="empty" style="padding:18px 10px"><b>${msg||'No entries in this range'}</b>${pretty(r.from)}${r.from!==r.to?' – '+pretty(r.to):''}${r.shop!=='all'?' · '+esc(SHOPS[r.shop].name):''}</div>`;
+const tot2=(cells)=>`<tr style="border-top:2px solid var(--line)">${cells}</tr>`;
 
-  const colRows=per.map(p=>{
-    if(!p.info)return `<tr><td class="l">${esc(p.name)}</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>`;
-    return `<tr><td class="l">${esc(p.name)}</td><td class="n">${inr(p.info.cash)}</td><td class="n">${inr(p.info.gpay)}</td><td class="n">${inr(p.info.gpay*GST)}</td><td class="n">${p.info.units}</td></tr>`;}).join('')
-    +`<tr style="border-top:2px solid var(--line)"><td class="l"><b>Total</b></td><td class="n"><b>${inr(totCash)}</b></td><td class="n"><b>${inr(totGpay)}</b></td><td class="n"><b>${inr(totTax)}</b></td><td class="n"><b>${totUnits}</b></td></tr>`;
+/* line chart: series [{name,color,values}] over labels (dates) */
+function lineChart(dates,series){
+  const W=640,H=220,L=52,R=26,T=12,B=28;const n=dates.length;
+  const max=Math.max(1,...series.flatMap(s=>s.values));
+  const nice=(v)=>{const p=Math.pow(10,Math.floor(Math.log10(v)));const m=v/p;return (m<=1?1:m<=2?2:m<=5?5:10)*p;};
+  const top=nice(max);
+  const x=i=>L+(n<=1?(W-L-R)/2:i*(W-L-R)/(n-1));const y=v=>T+(H-T-B)*(1-v/top);
+  let g='';for(let k=0;k<=4;k++){const v=top*k/4;g+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="#eef0f4"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end" font-size="10" fill="#6a7183">${v>=1000?Math.round(v/1000)+'k':Math.round(v)}</text>`;}
+  const step=Math.max(1,Math.ceil(n/7));let xl='';dates.forEach((d,i)=>{if(i%step===0||i===n-1)xl+=`<text x="${x(i)}" y="${H-8}" text-anchor="middle" font-size="10" fill="#6a7183">${new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</text>`;});
+  const lines=series.map(s=>{const pts=s.values.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    const dots=n<=31?s.values.map((v,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${s.bold?3:2.4}" fill="${s.color}"><title>${esc(s.name)} · ${pretty(dates[i])}: ${inr(v)}</title></circle>`).join(''):'';
+    return `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="${s.bold?2.6:1.8}" stroke-linejoin="round" stroke-linecap="round" ${s.dash?'stroke-dasharray="5 4"':''}/>${dots}`;}).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${g}${xl}${lines}</svg>`;
+}
 
-  const share=per.filter(p=>p.info&&p.info.gross>0).map(p=>({label:p.name,value:p.info.gross,color:AD_COLORS[COUNTERS.indexOf(p.id)]}));
-  const legend=share.map(s=>`<div class="li"><span class="sw" style="background:${s.color}"></span>${esc(s.label)} — <b>${inr(s.value)}</b> (${Math.round(s.value/totG*100)}%)</div>`).join('');
-  const prodArr=Object.entries(prod).map(([n,v])=>({label:n,value:v.a})).sort((a,b)=>b.value-a.value).slice(0,8);
-  const newRows=per.map(p=>`<tr><td class="l">${esc(p.name)}</td><td class="n">${p.info?p.info.newStk:'—'}</td></tr>`).join('');
-  const soldRows=Object.entries(prod).sort((a,b)=>b[1].a-a[1].a).map(([n,v])=>`<tr><td class="l">${esc(n)}</td><td class="n">${v.q}</td><td class="n">${inr(v.a)}</td></tr>`).join('')||`<tr><td colspan="3" style="padding:12px;color:var(--muted)">Nothing sold this day.</td></tr>`;
-  const profEntries=Object.entries(prod).sort((a,b)=>b[1].p-a[1].p);
-  const totProfit=profEntries.reduce((a,[,v])=>a+v.p,0);const totRev=profEntries.reduce((a,[,v])=>a+v.a,0);
-  const profitRows=profEntries.map(([n,v])=>`<tr><td class="l">${esc(n)}</td><td class="n">${v.q}</td><td class="n">${inr(v.a)}</td><td class="n" style="color:var(--green);font-weight:700">${inr(v.p)}</td></tr>`).join('')
-    +(profEntries.length?`<tr style="border-top:2px solid var(--line)"><td class="l"><b>Total</b></td><td class="n"></td><td class="n"><b>${inr(totRev)}</b></td><td class="n"><b style="color:var(--green)">${inr(totProfit)}</b></td></tr>`:`<tr><td colspan="4" style="padding:12px;color:var(--muted)">Nothing sold this day.</td></tr>`);
-
-  /* ---- product × counter matrix (selected date) ---- */
-  const matProducts={};
-  per.forEach(p=>{if(!p.info)return;p.info.rows.forEach(r=>{if(!matProducts[r.name])matProducts[r.name]={};matProducts[r.name][p.id]=(matProducts[r.name][p.id]||0)+r.qty;});});
-  const matHead=COUNTERS.map(id=>`<th style="text-align:right">${esc(SHOPS[id].name)}</th>`).join('');
-  const matRows=Object.keys(matProducts).sort().map(nm=>{
-    const row=matProducts[nm];let maxId=null,maxQ=-1;
-    COUNTERS.forEach(id=>{const q=row[id]||0;if(q>maxQ){maxQ=q;maxId=id;}});
-    const cells=COUNTERS.map(id=>{const q=row[id]||0;const hi=(q>0&&id===maxId);return `<td class="n" style="${hi?'background:#fff6e8;font-weight:800;color:var(--amber-d)':''}">${q||'—'}</td>`;}).join('');
-    return `<tr><td class="l">${esc(nm)}</td>${cells}<td class="l" style="font-weight:700">${maxQ>0?esc(SHOPS[maxId].name):'—'}</td></tr>`;
-  }).join('')||`<tr><td colspan="${COUNTERS.length+2}" style="padding:12px;color:var(--muted)">Nothing sold on this day.</td></tr>`;
-
-  /* ---- extra / shortage ledger (cumulative from DATA_START, all counters, complete days only) ---- */
-  const dayDiff={};
-  per.forEach(p=>{Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;const e=p.ents[dt];if(!isClosed(e,dt))return;dayDiff[dt]=(dayDiff[dt]||0)+calcFull(e,p.its,p.ph).diff;});});
-  const esDates=Object.keys(dayDiff).sort();let running=0;
-  const esRows=esDates.map(dt=>{const nd=dayDiff[dt];running+=nd;const sh=nd>0?nd:0,ex=nd<0?-nd:0;
-    return `<tr><td class="l">${pretty(dt)}</td><td class="n" style="color:var(--red)">${sh?inr(sh):'—'}</td><td class="n" style="color:var(--green)">${ex?inr(ex):'—'}</td><td class="n">${running>0?'Short '+inr(running):(running<0?'Extra '+inr(-running):'Nil')}</td></tr>`;}).join('')||`<tr><td colspan="4" style="padding:12px;color:var(--muted)">No completed days yet.</td></tr>`;
-  const esOverall=running;
-  const esBadge=esOverall>0?`<span style="color:var(--red);font-weight:800">SHORTAGE of ${inr(esOverall)}</span>`:(esOverall<0?`<span style="color:var(--green);font-weight:800">EXTRA of ${inr(-esOverall)}</span>`:'<b>Perfectly tallied</b>');
-
-  /* ---- waste record (cumulative from DATA_START) ---- */
-  const wasteT={pr:0,fr:0,mg:0,kc:0};const wastePer={};
-  per.forEach(p=>{let pr=0,fr=0,mg=0,kc=0;Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;const e=p.ents[dt];
-    (e.photos||[]).forEach(x=>pr+=num(x.waste));
-    (e.stock||[]).forEach(s=>{const it=p.its.find(i=>i.id===s.id);if(!it)return;const w=num(s.waste);if(it.seg==='Frames')fr+=w;else if(it.seg==='Magnets')mg+=w;else if(it.seg==='Keychains')kc+=w;});
-  });wastePer[p.id]={pr,fr,mg,kc};wasteT.pr+=pr;wasteT.fr+=fr;wasteT.mg+=mg;wasteT.kc+=kc;});
-  const wasteRows=per.map(p=>{const w=wastePer[p.id]||{pr:0,fr:0,mg:0,kc:0};return `<tr><td class="l">${esc(p.name)}</td><td class="n">${w.pr}</td><td class="n">${w.fr}</td><td class="n">${w.mg}</td><td class="n">${w.kc}</td></tr>`;}).join('')
-    +`<tr style="border-top:2px solid var(--line)"><td class="l"><b>Total</b></td><td class="n"><b>${wasteT.pr}</b></td><td class="n"><b>${wasteT.fr}</b></td><td class="n"><b>${wasteT.mg}</b></td><td class="n"><b>${wasteT.kc}</b></td></tr>`;
-
-  /* ---- tea expense tracker (total from DATA_START) ---- */
-  let teaToday=0,teaTotal=0;const teaPer={};
-  per.forEach(p=>{let tot=0;Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;tot+=num(p.ents[dt].tea);});teaPer[p.id]=tot;teaTotal+=tot;teaToday+=num(p.e&&p.e.tea);});
-  const teaRows=per.map(p=>`<tr><td class="l">${esc(p.name)}</td><td class="n">${inr(num(p.e&&p.e.tea))}</td><td class="n">${inr(teaPer[p.id]||0)}</td></tr>`).join('')
-    +`<tr style="border-top:2px solid var(--line)"><td class="l"><b>Total</b></td><td class="n"><b>${inr(teaToday)}</b></td><td class="n"><b>${inr(teaTotal)}</b></td></tr>`;
-
-  /* ---- total business per counter (till date) + monthly business ---- */
-  const bizPer={};let bizTotal=0;const monthMap={};
-  per.forEach(p=>{let tot=0;Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;const e=p.ents[dt];if(!isClosed(e,dt))return;const g=soldInfo(e,p.its,p.ph).gross;tot+=g;bizTotal+=g;const mo=dt.slice(0,7);if(!monthMap[mo])monthMap[mo]={total:0,per:{}};monthMap[mo].total+=g;monthMap[mo].per[p.id]=(monthMap[mo].per[p.id]||0)+g;});bizPer[p.id]=tot;});
-  const bizRows=per.map(p=>`<tr><td class="l">${esc(p.name)}</td><td class="n">${inr(bizPer[p.id]||0)}</td></tr>`).join('')
-    +`<tr style="border-top:2px solid var(--line)"><td class="l"><b>All counters</b></td><td class="n"><b>${inr(bizTotal)}</b></td></tr>`;
-  const moHead=COUNTERS.map(id=>`<th style="text-align:right">${esc(SHOPS[id].name)}</th>`).join('');
-  const months=Object.keys(monthMap).sort().reverse();
-  const moRows=months.map(mo=>{const m=monthMap[mo];const label=new Date(mo+'-01T00:00:00').toLocaleDateString('en-GB',{month:'short',year:'numeric'});
-    const cells=COUNTERS.map(id=>`<td class="n">${inr(m.per[id]||0)}</td>`).join('');
-    return `<tr><td class="l">${label}</td>${cells}<td class="n"><b>${inr(m.total)}</b></td></tr>`;}).join('')||`<tr><td colspan="${COUNTERS.length+2}" style="padding:12px;color:var(--muted)">No completed business yet.</td></tr>`;
-
-  /* ---- day performance: best/worst day per counter + overall + day-of-week ---- */
-  const dayTotalAll={};
-  const perfPer=per.map(p=>{let best=null,worst=null;
-    Object.keys(p.ents||{}).forEach(dt=>{if(dt<DATA_START)return;const e=p.ents[dt];if(!isClosed(e,dt))return;const g=soldInfo(e,p.its,p.ph).gross;
-      if(!best||g>best.g)best={dt,g};if(!worst||g<worst.g)worst={dt,g};
-      dayTotalAll[dt]=(dayTotalAll[dt]||0)+g;});
-    return{id:p.id,name:p.name,best,worst};});
-  let oBest=null,oWorst=null;Object.keys(dayTotalAll).forEach(dt=>{const g=dayTotalAll[dt];if(!oBest||g>oBest.g)oBest={dt,g};if(!oWorst||g<oWorst.g)oWorst={dt,g};});
-  const WD=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  const dowSum={},dowN={};Object.keys(dayTotalAll).forEach(dt=>{const wd=new Date(dt+'T00:00:00').getDay();dowSum[wd]=(dowSum[wd]||0)+dayTotalAll[dt];dowN[wd]=(dowN[wd]||0)+1;});
-  const dowAvg=WD.map((n,i)=>({name:n,avg:dowN[i]?dowSum[i]/dowN[i]:0,n:dowN[i]||0}));
-  const dowActive=dowAvg.filter(d=>d.n>0);
-  const dowBest=dowActive.length?dowActive.slice().sort((a,b)=>b.avg-a.avg)[0]:null;
-  const dowWorst=dowActive.length?dowActive.slice().sort((a,b)=>a.avg-b.avg)[0]:null;
-  const cell=(x)=>x?`${pretty(x.dt)} <span style="color:var(--muted)">(${wdayLong(x.dt)})</span><br>${inr(x.g)}`:'—';
-  const perfRows=perfPer.map(p=>`<tr><td class="l">${esc(p.name)}</td><td class="l" style="color:var(--green)">${cell(p.best)}</td><td class="l" style="color:var(--red)">${cell(p.worst)}</td></tr>`).join('')
-    +`<tr style="border-top:2px solid var(--line)"><td class="l"><b>All counters</b></td><td class="l" style="color:var(--green)"><b>${cell(oBest)}</b></td><td class="l" style="color:var(--red)"><b>${cell(oWorst)}</b></td></tr>`;
-  const dowRows=dowAvg.map(d=>{const hi=dowBest&&d.name===dowBest.name&&d.n>0;const lo=dowWorst&&d.name===dowWorst.name&&d.n>0&&(!dowBest||d.name!==dowBest.name);
-    return `<tr><td class="l">${d.name}${hi?' <span class="badge" style="background:var(--green);color:#fff">Best</span>':(lo?' <span class="badge" style="background:var(--red);color:#fff">Lowest</span>':'')}</td><td class="n">${d.n}</td><td class="n">${d.n?inr(d.avg):'—'}</td></tr>`;}).join('');
-  const dayListRows=Object.keys(dayTotalAll).sort().reverse().map(dt=>`<tr><td class="l">${pretty(dt)}</td><td class="l">${wdayLong(dt)}</td><td class="n">${inr(dayTotalAll[dt])}</td></tr>`).join('')||`<tr><td colspan="3" style="padding:12px;color:var(--muted)">No completed days yet.</td></tr>`;
-  const perfCard=`
-    <div class="card"><h2>Best &amp; worst days <span class="sub">— completed days, with weekday</span></h2>
-      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:left">Highest day</th><th style="text-align:left">Lowest day</th></tr></thead><tbody>${perfRows}</tbody></table></div>
-      <h2 style="margin-top:16px">By day of the week <span class="sub">— average business${dowBest?`; strongest is <b style="color:var(--green)">${dowBest.name}</b>${dowWorst&&dowWorst.name!==dowBest.name?`, weakest <b style="color:var(--red)">${dowWorst.name}</b>`:''}`:''}</span></h2>
-      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Weekday</th><th style="text-align:right">Days</th><th style="text-align:right">Avg business</th></tr></thead><tbody>${dowRows}</tbody></table></div>
-      <h2 style="margin-top:16px">All days <span class="sub">— scroll to see every day</span></h2>
-      <div style="max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:10px"><table class="tbl" style="margin:0"><thead style="position:sticky;top:0;background:#fff"><tr><th class="l">Date</th><th class="l">Day</th><th style="text-align:right">Total business</th></tr></thead><tbody>${dayListRows}</tbody></table></div>
-    </div>`;
-
-  /* ---- monthly profit / break-even tracker ---- */
-  const curMonth=todayStr().slice(0,7);
-  const curMonthLabel=new Date(curMonth+'-01T00:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'});
-  const bizMonth=(monthMap[curMonth]&&monthMap[curMonth].total)||0;
-  const margin=num(cfg.margin)||50;
-  const profit=bizMonth*margin/100;
+/* ---- card renderers: each returns {title, sub, body} ---- */
+const CARD_R={
+summary(r){const a=agg(r,false);const t=a.tot;
+  if(!t.days)return{title:'Business summary',body:noData(r)};
+  const best=a.list.filter(p=>a.byShop[p.id].gross>0).sort((x,y)=>a.byShop[y.id].gross-a.byShop[x.id].gross)[0];
+  const multi=r.shop==='all'&&best;
+  return{title:'Business summary',body:`<div class="summary">
+    <div class="stat sales"><div class="k">Total business</div><div class="v">${inr(t.gross)}</div></div>
+    <div class="stat cash"><div class="k">Cash received</div><div class="v">${inr(t.cash)}</div></div>
+    <div class="stat"><div class="k">GPay received</div><div class="v">${inr(t.gpay)}</div></div>
+    <div class="stat exp"><div class="k">GST 18% on GPay</div><div class="v">${inr(t.gpay*GST)}</div></div>
+    <div class="stat"><div class="k">Products sold</div><div class="v">${t.units}</div></div>
+    <div class="stat exp"><div class="k">Expenses</div><div class="v">${inr(t.exp)}</div></div>
+    <div class="stat"><div class="k">Profit on products</div><div class="v" style="color:var(--green)">${inr(t.profit)}</div></div>
+    <div class="stat"><div class="k">Days with entries</div><div class="v">${new Set(Object.keys(a.byDate)).size}</div></div></div>
+    <div style="margin-top:12px;font-size:13.5px;color:var(--ink-2)">${multi?`<b>${esc(best.name)}</b> performed best in this range with <b>${inr(a.byShop[best.id].gross)}</b>. `:''}New stock moved to counters: <b>${t.newStk}</b>.</div>`};},
+trend(r){const a=agg(r,false);const dates=[];for(let d=r.from;d<=r.to;d=addDays(d,1))dates.push(d);
+  if(!Object.keys(a.byDate).length)return{title:'Daily business trend',body:noData(r)};
+  const series=a.list.map(p=>({name:p.name,color:AD_COLORS[COUNTERS.indexOf(p.id)],values:dates.map(d=>(a.byDate[d]&&a.byDate[d].per[p.id])||0)}));
+  if(a.list.length>1)series.push({name:'All shops',color:'#171a21',bold:true,dash:true,values:dates.map(d=>(a.byDate[d]&&a.byDate[d].total)||0)});
+  const days=Object.keys(a.byDate).length;
+  const legend=series.map(s=>`<span class="tl"><span class="sw" style="background:${s.color}"></span>${esc(s.name)} <b>${inr(s.values.reduce((x,y)=>x+y,0))}</b></span>`).join('');
+  return{title:'Daily business trend',sub:'— one line per shop',body:`${lineChart(dates,series)}<div class="tlegend">${legend}</div>
+    <div style="margin-top:8px;font-size:12.5px;color:var(--muted)">Average per day with entries: <b>${inr(a.tot.gross/(days||1))}</b> · ${days} day(s)</div>`};},
+profit(r){const cfg=AD.cfg;
+  const a=agg(r,true,true);const biz=a.tot.gross;
+  const months=new Set();for(let d=r.from;d<=r.to;d=addDays(d,1))months.add(d.slice(0,7));const nM=months.size||1;
+  const margin=num(cfg.margin)||50;const profit=biz*margin/100;
   const salary=num(cfg.salary),rent=num(cfg.rent),purchases=num(cfg.purchases),loanInt=num(cfg.loanInterest),ssy=num(cfg.ssy),rentalInc=num(cfg.rentalIncome),loan=num(cfg.loan);
-  const outgo=salary+rent+purchases+loanInt+ssy;         // money going out each month
-  const target=Math.max(0,outgo-rentalInc);              // net that business profit must cover (rent income offsets)
-  const pct=target>0?Math.min(100,Math.round(profit/target*100)):100;
-  const remaining=Math.max(0,target-profit);
-  const bizNeeded=margin>0?remaining*100/margin:0;
-  const surplus=profit-target;                           // what's left after everything → toward loan principal
-  const payoffMonths=(loan>0&&surplus>0)?Math.ceil(loan/surplus):null;
-  const statusLine= surplus>=0
-    ? `<span style="color:var(--green);font-weight:800">✓ All covered — surplus of ${inr(surplus)} this month toward the loan.</span>`
-    : `Need <b>${inr(remaining)}</b> more profit — about <b>${inr(bizNeeded)}</b> more business this month to cover everything.`;
-  const barColor= surplus>=0?'var(--green)':(pct>=66?'var(--amber)':'var(--red)');
-  const loanLine = loan>0
-    ? (surplus>0
-        ? `Loan outstanding <b>${inr(loan)}</b> · at this month's surplus of ${inr(surplus)}/mo it clears in about <b>${payoffMonths} month${payoffMonths>1?'s':''}</b>. More business = faster payoff.`
-        : `Loan outstanding <b>${inr(loan)}</b> · interest ${inr(loanInt)}/mo. No surplus yet this month to pay down principal — cover the monthly need first.`)
-    : '';
-  const profitCard=`
-    <div class="card" style="border:2px solid ${surplus>=0?'#bfe6d2':'#f1dcae'}">
-      <h2>Monthly profit &amp; loan tracker <span class="sub">${curMonthLabel}</span></h2>
-      <div class="summary" style="margin-bottom:12px">
-        <div class="stat sales"><div class="k">Business this month</div><div class="v">${inr(bizMonth)}</div></div>
-        <div class="stat cash"><div class="k">Your profit (${margin}%)</div><div class="v">${inr(profit)}</div></div>
-        <div class="stat exp"><div class="k">Monthly need (net)</div><div class="v">${inr(target)}</div></div>
-        <div class="stat"><div class="k">${surplus>=0?'Surplus → loan':'Progress'}</div><div class="v" style="color:${surplus>=0?'var(--green)':'inherit'}">${surplus>=0?inr(surplus):pct+'%'}</div></div>
-      </div>
-      <div class="btrack" style="height:22px"><span class="bfill" style="width:${pct}%;background:${barColor}"></span></div>
-      <div style="margin-top:10px;font-size:14px">${statusLine}</div>
-      ${loanLine?`<div style="margin-top:8px;font-size:13px;color:var(--ink-2)">${loanLine}</div>`:''}
-      <div style="margin-top:8px;font-size:12px;color:var(--muted)">Out: Salary ${inr(salary)} + Rent ${inr(rent)} + Purchases ${inr(purchases)} + Loan interest ${inr(loanInt)} + SSY ${inr(ssy)} = ${inr(outgo)}. In: rental income ${inr(rentalInc)}. Net need ${inr(target)}. Profit = ${margin}% of business.</div>
-      <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700;font-size:13px;color:var(--amber-d)">Edit figures</summary>
-        <div class="row" style="margin-top:10px">
-          <div class="col"><label class="lbl">Staff salary / month ₹</label><input class="inp num" type="number" id="cfgSalary" value="${salary}"></div>
-          <div class="col"><label class="lbl">Shops rent / month ₹</label><input class="inp num" type="number" id="cfgRent" value="${rent}"></div>
-        </div>
-        <div class="row" style="margin-top:10px">
-          <div class="col"><label class="lbl">Loan interest / month ₹</label><input class="inp num" type="number" id="cfgLoanInt" value="${loanInt}"></div>
-          <div class="col"><label class="lbl">Loan outstanding ₹</label><input class="inp num" type="number" id="cfgLoan" value="${loan}"></div>
-        </div>
-        <div class="row" style="margin-top:10px">
-          <div class="col"><label class="lbl">SSY (daughter) / month ₹</label><input class="inp num" type="number" id="cfgSsy" value="${ssy}"></div>
-          <div class="col"><label class="lbl">Rental income / month ₹</label><input class="inp num" type="number" id="cfgRentalInc" value="${rentalInc}"></div>
-        </div>
-        <div class="row" style="margin-top:10px">
-          <div class="col"><label class="lbl">Profit margin %</label><input class="inp num" type="number" id="cfgMargin" value="${margin}"></div>
-          <div class="col"><label class="lbl">Purchases this month ₹</label><input class="inp num" type="number" id="cfgPurch" value="${purchases}"></div>
-        </div>
-        <div class="actions" style="margin-top:12px"><button class="btn btn-save" id="cfgSave">Save settings</button></div>
-      </details>
-    </div>`;
+  const outgo=salary+rent+purchases+loanInt+ssy;const target=Math.max(0,outgo-rentalInc)*nM;
+  const pct=target>0?Math.min(100,Math.round(profit/target*100)):100;const remaining=Math.max(0,target-profit);
+  const bizNeeded=margin>0?remaining*100/margin:0;const surplus=profit-target;
+  const perMonthSurplus=surplus/nM;const payoffMonths=(loan>0&&perMonthSurplus>0)?Math.ceil(loan/perMonthSurplus):null;
+  const statusLine=surplus>=0?`<span style="color:var(--green);font-weight:800">✓ All covered — surplus of ${inr(surplus)} in this period toward the loan.</span>`
+    :`Need <b>${inr(remaining)}</b> more profit — about <b>${inr(bizNeeded)}</b> more business to cover everything for ${nM} month${nM>1?'s':''}.`;
+  const barColor=surplus>=0?'var(--green)':(pct>=66?'var(--amber)':'var(--red)');
+  const loanLine=loan>0?(perMonthSurplus>0?`Loan outstanding <b>${inr(loan)}</b> · at ${inr(perMonthSurplus)}/month surplus it clears in about <b>${payoffMonths} month${payoffMonths>1?'s':''}</b>.`
+    :`Loan outstanding <b>${inr(loan)}</b> · interest ${inr(loanInt)}/mo. No surplus yet in this period to pay down principal.`):'';
+  return{title:'Profit &amp; loan tracker',sub:`— completed days · monthly need × ${nM} month${nM>1?'s':''}`,cls:surplus>=0?'okb':'warnb',body:`
+    <div class="summary" style="margin-bottom:12px">
+      <div class="stat sales"><div class="k">Business in period</div><div class="v">${inr(biz)}</div></div>
+      <div class="stat cash"><div class="k">Your profit (${margin}%)</div><div class="v">${inr(profit)}</div></div>
+      <div class="stat exp"><div class="k">Need (net)</div><div class="v">${inr(target)}</div></div>
+      <div class="stat"><div class="k">${surplus>=0?'Surplus → loan':'Progress'}</div><div class="v" style="color:${surplus>=0?'var(--green)':'inherit'}">${surplus>=0?inr(surplus):pct+'%'}</div></div></div>
+    <div class="btrack" style="height:22px;display:block"><span class="bfill" style="display:block;height:100%;width:${pct}%;background:${barColor}"></span></div>
+    <div style="margin-top:10px;font-size:14px">${statusLine}</div>
+    ${loanLine?`<div style="margin-top:8px;font-size:13px;color:var(--ink-2)">${loanLine}</div>`:''}
+    <div style="margin-top:8px;font-size:12px;color:var(--muted)">Per month — Out: Salary ${inr(salary)} + Rent ${inr(rent)} + Purchases ${inr(purchases)} + Loan interest ${inr(loanInt)} + SSY ${inr(ssy)} = ${inr(outgo)}. In: rental income ${inr(rentalInc)}. Profit = ${margin}% of business.</div>
+    <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700;font-size:13px;color:var(--amber-d)">Edit figures</summary>
+      <div class="row" style="margin-top:10px"><div class="col"><label class="lbl">Staff salary / month ₹</label><input class="inp num" type="number" id="cfgSalary" value="${salary}"></div>
+        <div class="col"><label class="lbl">Shops rent / month ₹</label><input class="inp num" type="number" id="cfgRent" value="${rent}"></div></div>
+      <div class="row" style="margin-top:10px"><div class="col"><label class="lbl">Loan interest / month ₹</label><input class="inp num" type="number" id="cfgLoanInt" value="${loanInt}"></div>
+        <div class="col"><label class="lbl">Loan outstanding ₹</label><input class="inp num" type="number" id="cfgLoan" value="${loan}"></div></div>
+      <div class="row" style="margin-top:10px"><div class="col"><label class="lbl">SSY (daughter) / month ₹</label><input class="inp num" type="number" id="cfgSsy" value="${ssy}"></div>
+        <div class="col"><label class="lbl">Rental income / month ₹</label><input class="inp num" type="number" id="cfgRentalInc" value="${rentalInc}"></div></div>
+      <div class="row" style="margin-top:10px"><div class="col"><label class="lbl">Profit margin %</label><input class="inp num" type="number" id="cfgMargin" value="${margin}"></div>
+        <div class="col"><label class="lbl">Purchases / month ₹</label><input class="inp num" type="number" id="cfgPurch" value="${purchases}"></div></div>
+      <div class="actions" style="margin-top:12px"><button class="btn btn-save" id="cfgSave">Save settings</button></div></details>`};},
+collect(r){const a=agg(r,false);if(!a.tot.days)return{title:'Collections &amp; GST',sub:'— GST is 18% of GPay only',body:noData(r)};
+  const rows=a.list.map(p=>{const s=a.byShop[p.id];return `<tr><td class="l">${esc(p.name)}</td><td class="n">${s.days}</td><td class="n">${inr(s.cash)}</td><td class="n">${inr(s.gpay)}</td><td class="n">${inr(s.gpay*GST)}</td><td class="n">${s.units}</td></tr>`;}).join('');
+  const t=a.tot;return{title:'Collections &amp; GST',sub:'— GST is 18% of GPay only',body:`<div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Shop</th><th style="text-align:right">Days</th><th style="text-align:right">Cash</th><th style="text-align:right">GPay</th><th style="text-align:right">GST 18%</th><th style="text-align:right">Products sold</th></tr></thead>
+    <tbody>${rows}${tot2(`<td class="l"><b>Total</b></td><td class="n"></td><td class="n"><b>${inr(t.cash)}</b></td><td class="n"><b>${inr(t.gpay)}</b></td><td class="n"><b>${inr(t.gpay*GST)}</b></td><td class="n"><b>${t.units}</b></td>`)}</tbody></table></div>`};},
+staff(r){const staff={};
+  shopsFor(r).forEach(p=>datesIn(p,r,true).forEach(dt=>{const day=p.ents[dt];const nm=(day.sign&&String(day.sign).trim())||'(no name)';
+    const c=calcFull(day,p.its,p.ph);const ad=Math.abs(c.diff);if(!staff[nm])staff[nm]={days:0,perfect:0,mistakes:0,err:0};
+    staff[nm].days++;staff[nm].err+=ad;if(ad<1)staff[nm].perfect++;else staff[nm].mistakes++;}));
+  const named=Object.entries(staff).filter(([n])=>n!=='(no name)');
+  if(!Object.keys(staff).length)return{title:'Staff accuracy',sub:'— completed days, by name',body:noData(r,'No completed days in this range')};
+  const bestS=named.length?named.slice().sort((a,b)=>b[1].perfect-a[1].perfect||a[1].err-b[1].err)[0]:null;
+  const worstS=named.length?named.slice().sort((a,b)=>b[1].mistakes-a[1].mistakes||b[1].err-a[1].err)[0]:null;
+  const rows=Object.entries(staff).sort((a,b)=>b[1].days-a[1].days).map(([n,v])=>{
+    const isB=bestS&&n===bestS[0]&&v.mistakes<v.days;const isW=worstS&&n===worstS[0]&&v.mistakes>0&&(!bestS||n!==bestS[0]);
+    const tag=isB?' <span class="badge" style="background:var(--green);color:#fff">Most accurate</span>':(isW?' <span class="badge" style="background:var(--red);color:#fff">Most mistakes</span>':'');
+    return `<tr><td class="l">${esc(n)}${tag}</td><td class="n">${v.days}</td><td class="n">${v.perfect}</td><td class="n">${v.mistakes}</td><td class="n">${inr(v.err)}</td></tr>`;}).join('');
+  const call=(bestS?`Most accurate: <b>${esc(bestS[0])}</b> — ${bestS[1].perfect} of ${bestS[1].days} days tallied perfectly. `:'')+(worstS&&worstS[1].mistakes>0&&(!bestS||worstS[0]!==bestS[0])?`Most mistakes: <b>${esc(worstS[0])}</b> — ${worstS[1].mistakes} day(s) off, ${inr(worstS[1].err)} total.`:'');
+  return{title:'Staff accuracy',sub:'— completed days, by name',body:`<div style="margin-bottom:10px;font-size:13.5px;color:var(--ink-2)">${call||'No named entries in this range.'}</div>
+    <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Name</th><th style="text-align:right">Days</th><th style="text-align:right">Perfect</th><th style="text-align:right">Mistakes</th><th style="text-align:right">Total difference</th></tr></thead><tbody>${rows}</tbody></table></div>`};},
+each(r){const a=agg(r,false);const best=a.list.filter(p=>a.byShop[p.id].gross>0).sort((x,y)=>a.byShop[y.id].gross-a.byShop[x.id].gross)[0];
+  const cards=a.list.map(p=>{const s=a.byShop[p.id];
+    if(!s.days)return `<div class="cc off"><div class="ccn">${esc(p.name)}</div><div class="ccm" style="margin-top:8px">No entry in this range</div></div>`;
+    const isBest=a.list.length>1&&best&&p.id===best.id;
+    const inc=s.missing>0?`<div style="color:var(--red);font-weight:700;font-size:11.5px;margin-top:6px">⚠ Closing incomplete — ${s.missing} item(s) not entered</div>`:'';
+    return `<div class="cc ${isBest?'best':''}"><div class="ccn"><span>${esc(p.name)}</span>${isBest?'<span class="badge">Top</span>':''}</div><div class="ccg">${inr(s.gross)}</div>
+      <div class="ccm">${s.days} day(s) · avg ${inr(s.gross/s.days)}/day<br>Cash ${inr(s.cash)} · GPay ${inr(s.gpay)}<br>GST 18% on GPay ${inr(s.gpay*GST)}<br>Products sold ${s.units} · New stock ${s.newStk}<br>Expenses ${inr(s.exp)}</div>${inc}</div>`;}).join('');
+  return{title:'Each shop',body:`<div class="ad-grid">${cards}</div>`};},
+share(r){const a=agg(r,false,true);const share=a.list.filter(p=>a.byShop[p.id].gross>0).map(p=>({label:p.name,value:a.byShop[p.id].gross,color:AD_COLORS[COUNTERS.indexOf(p.id)]}));
+  if(!share.length)return{title:'Sales share by shop',body:noData(r)};
+  const legend=share.map(s=>`<div class="li"><span class="sw" style="background:${s.color}"></span>${esc(s.label)} — <b>${inr(s.value)}</b> (${Math.round(s.value/a.tot.gross*100)}%)</div>`).join('');
+  return{title:'Sales share by shop',body:`<div class="chartwrap"><div>${donut(share)}</div><div class="legend">${legend}</div></div>`};},
+prods(r){const a=agg(r,false);const arr=Object.entries(a.prod).map(([n,v])=>({label:n,value:v.a})).sort((x,y)=>y.value-x.value);
+  if(!arr.length)return{title:'Product revenue',sub:'— by value',body:noData(r,'No sales in this range')};
+  return{title:'Product revenue',sub:'— by value',body:barsH(arr)+`<div style="margin-top:10px;font-size:13px;color:var(--ink-2)">Total revenue: <b>${inr(a.tot.gross)}</b> · Top product: <b>${esc(arr[0].label)}</b> (${inr(arr[0].value)})</div>`};},
+pprofit(r){const a=agg(r,false);const pe=Object.entries(a.prod).sort((x,y)=>y[1].p-x[1].p);
+  if(!pe.length)return{title:'Profit by product',sub:'— selling − cost',body:noData(r,'No sales in this range')};
+  const tr=pe.reduce((s,[,v])=>s+v.a,0),tp=pe.reduce((s,[,v])=>s+v.p,0);
+  const rows=pe.map(([n,v])=>`<tr><td class="l">${esc(n)}</td><td class="n">${v.q}</td><td class="n">${inr(v.a)}</td><td class="n" style="color:var(--green);font-weight:700">${inr(v.p)}</td></tr>`).join('');
+  return{title:'Profit by product',sub:'— selling − cost',body:`<div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th><th style="text-align:right">Profit</th></tr></thead><tbody>${rows}${tot2(`<td class="l"><b>Total</b></td><td class="n"></td><td class="n"><b>${inr(tr)}</b></td><td class="n"><b style="color:var(--green)">${inr(tp)}</b></td>`)}</tbody></table></div>`};},
+newstock(r){const a=agg(r,false);if(!a.tot.days)return{title:'New stock taken',body:noData(r)};
+  const rows=a.list.map(p=>`<tr><td class="l">${esc(p.name)}</td><td class="n">${a.byShop[p.id].days?a.byShop[p.id].newStk:'—'}</td></tr>`).join('');
+  return{title:'New stock taken',body:`<table class="tbl"><thead><tr><th class="l">Shop</th><th style="text-align:right">New units</th></tr></thead><tbody>${rows}${a.list.length>1?tot2(`<td class="l"><b>Total</b></td><td class="n"><b>${a.tot.newStk}</b></td>`):''}</tbody></table>`};},
+sold(r){const a=agg(r,false);const rows=Object.entries(a.prod).sort((x,y)=>y[1].a-x[1].a).map(([n,v])=>`<tr><td class="l">${esc(n)}</td><td class="n">${v.q}</td><td class="n">${inr(v.a)}</td></tr>`).join('');
+  if(!rows)return{title:'Products sold (by item)',body:noData(r,'Nothing sold in this range')};
+  return{title:'Products sold (by item)',body:`<table class="tbl"><thead><tr><th class="l">Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Amount</th></tr></thead><tbody>${rows}${tot2(`<td class="l"><b>Total</b></td><td class="n"><b>${a.tot.units}</b></td><td class="n"><b>${inr(a.tot.gross)}</b></td>`)}</tbody></table>`};},
+matrix(r){const a=agg(r,false,true);const head=COUNTERS.map(id=>`<th style="text-align:right">${esc(SHOPS[id].name)}</th>`).join('');
+  const rows=Object.keys(a.prod).sort().map(nm=>{const row=a.prod[nm].by;let maxId=null,maxQ=-1;COUNTERS.forEach(id=>{const q=row[id]||0;if(q>maxQ){maxQ=q;maxId=id;}});
+    const cells=COUNTERS.map(id=>{const q=row[id]||0;const hi=(q>0&&id===maxId);return `<td class="n" style="${hi?'background:#fff6e8;font-weight:800;color:var(--amber-d)':''}">${q||'—'}</td>`;}).join('');
+    return `<tr><td class="l">${esc(nm)}</td>${cells}<td class="l" style="font-weight:700">${maxQ>0?esc(SHOPS[maxId].name):'—'}</td></tr>`;}).join('');
+  if(!rows)return{title:'Product by shop',sub:'— highlighted = highest-selling shop',body:noData(r,'Nothing sold in this range')};
+  return{title:'Product by shop',sub:'— highlighted = highest-selling shop',body:`<div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Product</th>${head}<th style="text-align:left">Top shop</th></tr></thead><tbody>${rows}</tbody></table></div>`};},
+ledger(r){const dayDiff={};shopsFor(r).forEach(p=>datesIn(p,r,true).forEach(dt=>{dayDiff[dt]=(dayDiff[dt]||0)+calcFull(p.ents[dt],p.its,p.ph).diff;}));
+  const ds=Object.keys(dayDiff).sort();if(!ds.length)return{title:'Extra / Shortage ledger',sub:'— completed days, running total',body:noData(r,'No completed days in this range')};
+  let run=0;const rows=ds.map(dt=>{const nd=dayDiff[dt];run+=nd;const sh=nd>0?nd:0,ex=nd<0?-nd:0;
+    return `<tr><td class="l">${pretty(dt)}</td><td class="n" style="color:var(--red)">${sh?inr(sh):'—'}</td><td class="n" style="color:var(--green)">${ex?inr(ex):'—'}</td><td class="n">${run>0?'Short '+inr(run):(run<0?'Extra '+inr(-run):'Nil')}</td></tr>`;}).reverse().join('');
+  const badge=run>0?`<span style="color:var(--red);font-weight:800">SHORTAGE of ${inr(run)}</span>`:(run<0?`<span style="color:var(--green);font-weight:800">EXTRA of ${inr(-run)}</span>`:'<b>Perfectly tallied</b>');
+  return{title:'Extra / Shortage ledger',sub:'— completed days, running total',body:`<div style="margin-bottom:10px;font-size:15px">Overall for this range: ${badge}</div>
+    <div class="scrollbox"><table class="tbl" style="margin:0"><thead><tr><th class="l">Date</th><th style="text-align:right">Shortage ₹</th><th style="text-align:right">Extra ₹</th><th style="text-align:right">Running total</th></tr></thead><tbody>${rows}</tbody></table></div>`};},
+waste(r){const T={pr:0,fr:0,mg:0,kc:0};const list=shopsFor(r);
+  const rows=list.map(p=>{let pr=0,fr=0,mg=0,kc=0;datesIn(p,r,false).forEach(dt=>{const e=p.ents[dt];(e.photos||[]).forEach(x=>pr+=num(x.waste));
+      (e.stock||[]).forEach(s=>{const it=p.its.find(i=>i.id===s.id);if(!it)return;const w=num(s.waste);if(it.seg==='Frames')fr+=w;else if(it.seg==='Magnets')mg+=w;else if(it.seg==='Keychains')kc+=w;});});
+    T.pr+=pr;T.fr+=fr;T.mg+=mg;T.kc+=kc;return `<tr><td class="l">${esc(p.name)}</td><td class="n">${pr}</td><td class="n">${fr}</td><td class="n">${mg}</td><td class="n">${kc}</td></tr>`;}).join('');
+  return{title:'Waste record',body:`<div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Shop</th><th style="text-align:right">Prints</th><th style="text-align:right">Frames</th><th style="text-align:right">Magnets</th><th style="text-align:right">Keychains</th></tr></thead><tbody>${rows}${list.length>1?tot2(`<td class="l"><b>Total</b></td><td class="n"><b>${T.pr}</b></td><td class="n"><b>${T.fr}</b></td><td class="n"><b>${T.mg}</b></td><td class="n"><b>${T.kc}</b></td>`):''}</tbody></table></div>`};},
+tea(r){const a=agg(r,false);const rows=a.list.map(p=>{const s=a.byShop[p.id];return `<tr><td class="l">${esc(p.name)}</td><td class="n">${s.days}</td><td class="n">${inr(s.tea)}</td><td class="n">${s.days?inr(s.tea/s.days):'—'}</td></tr>`;}).join('');
+  return{title:'Tea expenses',body:`<div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Shop</th><th style="text-align:right">Days</th><th style="text-align:right">Tea total</th><th style="text-align:right">Avg / day</th></tr></thead><tbody>${rows}${a.list.length>1?tot2(`<td class="l"><b>Total</b></td><td class="n"></td><td class="n"><b>${inr(a.tot.tea)}</b></td><td class="n"></td>`):''}</tbody></table></div>`};},
+biz(r){const a=agg(r,true);const rows=a.list.map(p=>`<tr><td class="l">${esc(p.name)}</td><td class="n">${a.byShop[p.id].days}</td><td class="n">${inr(a.byShop[p.id].gross)}</td></tr>`).join('');
+  return{title:'Total business',sub:'— completed days',body:`<div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Shop</th><th style="text-align:right">Days</th><th style="text-align:right">Total business</th></tr></thead><tbody>${rows}${a.list.length>1?tot2(`<td class="l"><b>All shops</b></td><td class="n"></td><td class="n"><b>${inr(a.tot.gross)}</b></td>`):''}</tbody></table></div>`};},
+monthly(r){const a=agg(r,true);const mm={};Object.keys(a.byDate).forEach(dt=>{const mo=dt.slice(0,7);if(!mm[mo])mm[mo]={total:0,per:{}};mm[mo].total+=a.byDate[dt].total;Object.entries(a.byDate[dt].per).forEach(([id,g])=>mm[mo].per[id]=(mm[mo].per[id]||0)+g);});
+  const ids=a.list.map(p=>p.id);const head=ids.map(id=>`<th style="text-align:right">${esc(SHOPS[id].name)}</th>`).join('');
+  const rows=Object.keys(mm).sort().reverse().map(mo=>{const m=mm[mo];const label=new Date(mo+'-01T00:00:00').toLocaleDateString('en-GB',{month:'short',year:'numeric'});
+    return `<tr><td class="l">${label}</td>${ids.map(id=>`<td class="n">${inr(m.per[id]||0)}</td>`).join('')}${ids.length>1?`<td class="n"><b>${inr(m.total)}</b></td>`:''}</tr>`;}).join('');
+  if(!rows)return{title:'Monthly business',sub:'— completed days',body:noData(r,'No completed business in this range')};
+  return{title:'Monthly business',sub:'— completed days',body:`<div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Month</th>${head}${ids.length>1?'<th style="text-align:right">All shops</th>':''}</tr></thead><tbody>${rows}</tbody></table></div>`};},
+perf(r){const list=shopsFor(r);const dayAll={};
+  const pp=list.map(p=>{let best=null,worst=null;datesIn(p,r,true).forEach(dt=>{const g=soldInfo(p.ents[dt],p.its,p.ph).gross;if(!best||g>best.g)best={dt,g};if(!worst||g<worst.g)worst={dt,g};dayAll[dt]=(dayAll[dt]||0)+g;});return{name:p.name,best,worst};});
+  if(!Object.keys(dayAll).length)return{title:'Best &amp; worst days',sub:'— completed days, with weekday',body:noData(r,'No completed days in this range')};
+  let oB=null,oW=null;Object.keys(dayAll).forEach(dt=>{const g=dayAll[dt];if(!oB||g>oB.g)oB={dt,g};if(!oW||g<oW.g)oW={dt,g};});
+  const WD=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];const sum={},n={};
+  Object.keys(dayAll).forEach(dt=>{const w=new Date(dt+'T00:00:00').getDay();sum[w]=(sum[w]||0)+dayAll[dt];n[w]=(n[w]||0)+1;});
+  const dow=WD.map((nm,i)=>({name:nm,avg:n[i]?sum[i]/n[i]:0,n:n[i]||0}));const act=dow.filter(d=>d.n>0);
+  const dB=act.length?act.slice().sort((a,b)=>b.avg-a.avg)[0]:null,dW=act.length?act.slice().sort((a,b)=>a.avg-b.avg)[0]:null;
+  const cell=x=>x?`${pretty(x.dt)} <span style="color:var(--muted)">(${wdayLong(x.dt)})</span><br>${inr(x.g)}`:'—';
+  const prow=pp.map(p=>`<tr><td class="l">${esc(p.name)}</td><td class="l" style="color:var(--green)">${cell(p.best)}</td><td class="l" style="color:var(--red)">${cell(p.worst)}</td></tr>`).join('')
+    +(list.length>1?tot2(`<td class="l"><b>All shops</b></td><td class="l" style="color:var(--green)"><b>${cell(oB)}</b></td><td class="l" style="color:var(--red)"><b>${cell(oW)}</b></td>`):'');
+  const drow=dow.map(d=>{const hi=dB&&d.name===dB.name&&d.n>0;const lo=dW&&d.name===dW.name&&d.n>0&&(!dB||d.name!==dB.name);
+    return `<tr><td class="l">${d.name}${hi?' <span class="badge" style="background:var(--green);color:#fff">Best</span>':(lo?' <span class="badge" style="background:var(--red);color:#fff">Lowest</span>':'')}</td><td class="n">${d.n}</td><td class="n">${d.n?inr(d.avg):'—'}</td></tr>`;}).join('');
+  const lrow=Object.keys(dayAll).sort().reverse().map(dt=>`<tr><td class="l">${pretty(dt)}</td><td class="l">${wdayLong(dt)}</td><td class="n">${inr(dayAll[dt])}</td></tr>`).join('');
+  return{title:'Best &amp; worst days',sub:'— completed days, with weekday',body:`<div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Shop</th><th style="text-align:left">Highest day</th><th style="text-align:left">Lowest day</th></tr></thead><tbody>${prow}</tbody></table></div>
+    <h2 style="margin-top:16px">By day of the week <span class="sub">— average business${dB?`; strongest <b style="color:var(--green)">${dB.name}</b>${dW&&dW.name!==dB.name?`, weakest <b style="color:var(--red)">${dW.name}</b>`:''}`:''}</span></h2>
+    <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Weekday</th><th style="text-align:right">Days</th><th style="text-align:right">Avg business</th></tr></thead><tbody>${drow}</tbody></table></div>
+    <h2 style="margin-top:16px">All days <span class="sub">— scroll to see every day</span></h2>
+    <div class="scrollbox"><table class="tbl" style="margin:0"><thead><tr><th class="l">Date</th><th class="l">Day</th><th style="text-align:right">Total business</th></tr></thead><tbody>${lrow}</tbody></table></div>`};}
+};
+/* layout order; arrays = side-by-side pair */
+const CARD_ORDER=['summary','trend','profit','__payments','collect','staff','each','share','prods','pprofit',['newstock','sold'],'matrix','ledger','waste','tea','biz','monthly','perf'];
 
-  /* ---- payments & deadlines countdown ---- */
+function cardHTML(id){let out;
+  try{out=CARD_R[id](getRange(id));}catch(err){console.error(id,err);out={title:id,body:`<div class="empty">Could not build this card: ${esc(err.message)}</div>`};}
+  return `<div class="card ${out.cls||''}" id="c-${id}"><div class="card-hd"><h2>${out.title}${out.sub?` <span class="sub">${out.sub}</span>`:''}</h2>${rangeCtl(id)}</div>${out.body}</div>`;}
+function renderCard(id){const el=$('#c-'+id);if(!el){renderAllCards();return;}el.outerHTML=cardHTML(id);wireCard(id);}
+function wireCard(id){
+  if(id==='profit'){const cs=$('#cfgSave');if(cs)cs.onclick=async()=>{
+    Object.assign(adminCfg,{salary:num($('#cfgSalary').value),rent:num($('#cfgRent').value),margin:num($('#cfgMargin').value)||50,purchases:num($('#cfgPurch').value),
+      loanInterest:num($('#cfgLoanInt').value),loan:num($('#cfgLoan').value),ssy:num($('#cfgSsy').value),rentalIncome:num($('#cfgRentalInc').value)});
+    await saveConfig(adminCfg);AD.cfg=adminCfg;toast('Settings saved');renderCard('profit');};}
+}
+function paymentsHTML(){const cfg=AD.cfg;
   const pays=(cfg.payments||[]).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
-  const payRowsHtml=pays.length?pays.map(p=>{const dl=daysUntil(p.date);
-    const col=dl<0?'var(--muted)':(dl<=7?'var(--red)':(dl<=30?'var(--amber-d)':'var(--green)'));
+  const rows=pays.length?pays.map(p=>{const dl=daysUntil(p.date);const col=dl<0?'var(--muted)':(dl<=7?'var(--red)':(dl<=30?'var(--amber-d)':'var(--green)'));
     const dtxt=!p.date?'—':(dl<0?'passed':(dl===0?'TODAY':dl+' day'+(dl>1?'s':'')+' left'));
-    return `<tr><td class="l">${esc(p.label||'—')}</td><td class="n">${p.amount?inr(p.amount):'—'}</td><td class="n">${p.date?pretty(p.date):'—'}</td><td class="n" style="color:${col};font-weight:800">${dtxt}</td></tr>`;
-  }).join(''):`<tr><td colspan="4" style="padding:12px;color:var(--muted)">No payments added yet.</td></tr>`;
-  const payEdit=(cfg.payments||[]).map((p,i)=>`<div class="row pay-row" style="margin-top:8px;align-items:center">
+    return `<tr><td class="l">${esc(p.label||'—')}</td><td class="n">${p.amount?inr(p.amount):'—'}</td><td class="n">${p.date?pretty(p.date):'—'}</td><td class="n" style="color:${col};font-weight:800">${dtxt}</td></tr>`;}).join(''):`<tr><td colspan="4" style="padding:12px;color:var(--muted)">No payments added yet.</td></tr>`;
+  const ed=(cfg.payments||[]).map((p,i)=>`<div class="row pay-row" style="margin-top:8px;align-items:center">
     <input class="inp pl" style="flex:2;min-width:140px" value="${esc(p.label||'')}" placeholder="What for">
     <input class="inp pa num" type="number" style="max-width:130px" value="${num(p.amount)||''}" placeholder="Amount ₹">
     <input class="inp pd" type="date" style="max-width:170px" value="${p.date||''}">
     <button class="x pay-del" data-i="${i}" title="Remove">×</button></div>`).join('');
-  const paymentsCard=`
-    <div class="card"><h2>Payments &amp; deadlines <span class="sub">— day countdown</span></h2>
-      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Payment</th><th style="text-align:right">Amount</th><th style="text-align:right">Due date</th><th style="text-align:right">Countdown</th></tr></thead><tbody>${payRowsHtml}</tbody></table></div>
-      <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700;font-size:13px;color:var(--amber-d)">Edit payments</summary>
-        <div id="payEditor">${payEdit}</div>
-        <div class="actions" style="margin-top:10px"><button class="btn-ghost" id="payAdd">+ Add payment</button><button class="btn btn-save" id="paySave">Save payments</button></div>
-      </details></div>`;
-
-  body.innerHTML=alertsCardHTML(alerts)+`
-    <div class="card"><h2>All counters <span class="sub">${pretty(date)}</span></h2>
-      <div class="summary">
-        <div class="stat sales"><div class="k">Total business</div><div class="v">${inr(totG)}</div></div>
-        <div class="stat cash"><div class="k">Cash received</div><div class="v">${inr(totCash)}</div></div>
-        <div class="stat"><div class="k">GPay received</div><div class="v">${inr(totGpay)}</div></div>
-        <div class="stat exp"><div class="k">GST 18% on GPay</div><div class="v">${inr(totTax)}</div></div>
-        <div class="stat"><div class="k">Products sold</div><div class="v">${totUnits}</div></div>
-        <div class="stat exp"><div class="k">Expenses</div><div class="v">${inr(totExp)}</div></div>
-      </div>
-      <div style="margin-top:12px;font-size:13.5px;color:var(--ink-2)">${best?`<b>${esc(best.name)}</b> performed best today with <b>${inr(best.info.gross)}</b>. Total new stock moved to counters: <b>${totNew}</b>.`:''}</div>
-    </div>
-
-    ${profitCard}
-
-    ${paymentsCard}
-
-    <div class="card"><h2>Collections &amp; GST <span class="sub">— GST is 18% of the GPay amount only</span></h2>
-      <table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">Cash</th><th style="text-align:right">GPay</th><th style="text-align:right">GST 18% (GPay)</th><th style="text-align:right">Products sold</th></tr></thead>
-        <tbody>${colRows}</tbody></table></div>
-
-    <div class="card"><h2>Staff accuracy <span class="sub">— all saved days, by name</span></h2>
-      <div style="margin-bottom:10px;font-size:13.5px;color:var(--ink-2)">${staffCallout||'No named entries yet. Staff pick their name on the day sheet.'}</div>
-      <table class="tbl"><thead><tr><th class="l">Name</th><th style="text-align:right">Days</th><th style="text-align:right">Perfect</th><th style="text-align:right">Mistakes</th><th style="text-align:right">Total difference</th></tr></thead>
-        <tbody>${staffRows||`<tr><td colspan="5" style="padding:12px;color:var(--muted)">No saved days yet.</td></tr>`}</tbody></table></div>
-
-    <div class="card"><h2>Each counter</h2><div class="ad-grid">${cards}</div></div>
-
-    <div class="card"><h2>Sales share by counter</h2>
-      <div class="chartwrap"><div>${donut(share)}</div><div class="legend">${legend}</div></div>
-    </div>
-
-    <div class="card"><h2>Top products sold <span class="sub">— all counters, by value</span></h2>${barsH(prodArr)}</div>
-
-    <div class="card"><h2>Profit by product <span class="sub">${pretty(date)} — selling − cost, all counters</span></h2>
-      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th><th style="text-align:right">Profit</th></tr></thead><tbody>${profitRows}</tbody></table></div></div>
-
-    <div class="card"><h2>Product revenue <span class="sub">${pretty(date)} — pick a counter; change the date at the top</span></h2>
-      <div class="row" style="margin-bottom:10px"><div class="col" style="max-width:240px"><label class="lbl">Counter</label>
-        <select class="inp" id="revCounter"><option value="all">All counters</option>${COUNTERS.map(id=>`<option value="${id}">${esc(SHOPS[id].name)}</option>`).join('')}</select></div></div>
-      <div id="revChart"></div></div>
-
-    <div class="row">
-      <div class="col" style="min-width:260px"><div class="card"><h2>New stock taken today</h2>
-        <table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">New units</th></tr></thead><tbody>${newRows}</tbody></table></div></div>
-      <div class="col" style="min-width:260px"><div class="card"><h2>Products sold (by item)</h2>
-        <table class="tbl"><thead><tr><th class="l">Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Amount</th></tr></thead><tbody>${soldRows}</tbody></table></div></div>
-    </div>
-
-    <div class="card"><h2>Product by counter <span class="sub">${pretty(date)} — highlighted = highest-selling counter</span></h2>
-      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Product</th>${matHead}<th style="text-align:left">Top counter</th></tr></thead><tbody>${matRows}</tbody></table></div></div>
-
-    <div class="card"><h2>Extra / Shortage ledger <span class="sub">— all counters, completed days, running total</span></h2>
-      <div style="margin-bottom:10px;font-size:15px">Overall till today: ${esBadge}</div>
-      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Date</th><th style="text-align:right">Shortage ₹</th><th style="text-align:right">Extra ₹</th><th style="text-align:right">Running total</th></tr></thead><tbody>${esRows}</tbody></table></div></div>
-
-    <div class="card"><h2>Waste record <span class="sub">— all days, by counter</span></h2>
-      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">Waste prints</th><th style="text-align:right">Waste frames</th><th style="text-align:right">Waste magnets</th><th style="text-align:right">Waste keychains</th></tr></thead><tbody>${wasteRows}</tbody></table></div></div>
-
-    <div class="card"><h2>Tea expenses <span class="sub">— today &amp; running total</span></h2>
-      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">Tea (today)</th><th style="text-align:right">Tea (total)</th></tr></thead><tbody>${teaRows}</tbody></table></div></div>
-
-    <div class="card"><h2>Total business till date <span class="sub">— per counter, from ${pretty(DATA_START)}</span></h2>
-      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Counter</th><th style="text-align:right">Total business</th></tr></thead><tbody>${bizRows}</tbody></table></div></div>
-
-    <div class="card"><h2>Monthly business <span class="sub">— total by month &amp; counter</span></h2>
-      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Month</th>${moHead}<th style="text-align:right">All counters</th></tr></thead><tbody>${moRows}</tbody></table></div></div>
-
-    ${perfCard}`;
-  wireAlertButtons(alerts);fireAlertNotification(alerts);
-  lastPer=per;lastDate=date;
-  const rc=$('#revCounter');if(rc)rc.onchange=renderRevChart;
-  renderRevChart();
-  const cs=$('#cfgSave');if(cs)cs.onclick=async()=>{
-    Object.assign(adminCfg,{salary:num($('#cfgSalary').value),rent:num($('#cfgRent').value),margin:num($('#cfgMargin').value)||50,purchases:num($('#cfgPurch').value),
-      loanInterest:num($('#cfgLoanInt').value),loan:num($('#cfgLoan').value),ssy:num($('#cfgSsy').value),rentalIncome:num($('#cfgRentalInc').value)});
-    await saveConfig(adminCfg);toast('Settings saved');renderAdmin();
-  };
-  function readPayEditor(){const rows=[...document.querySelectorAll('#payEditor .pay-row')];adminCfg.payments=rows.map(r=>({label:r.querySelector('.pl').value,amount:num(r.querySelector('.pa').value),date:r.querySelector('.pd').value}));}
-  const pa=$('#payAdd');if(pa)pa.onclick=async()=>{readPayEditor();adminCfg.payments.push({label:'',amount:0,date:todayStr()});await saveConfig(adminCfg);renderAdmin();};
-  const psv=$('#paySave');if(psv)psv.onclick=async()=>{readPayEditor();await saveConfig(adminCfg);toast('Payments saved');renderAdmin();};
-  document.querySelectorAll('.pay-del').forEach(b=>b.onclick=async()=>{readPayEditor();adminCfg.payments.splice(num(b.dataset.i),1);await saveConfig(adminCfg);renderAdmin();});
+  return `<div class="card" id="c-__payments"><h2>Payments &amp; deadlines <span class="sub">— day countdown</span></h2>
+    <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Payment</th><th style="text-align:right">Amount</th><th style="text-align:right">Due date</th><th style="text-align:right">Countdown</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700;font-size:13px;color:var(--amber-d)">Edit payments</summary>
+      <div id="payEditor">${ed}</div>
+      <div class="actions" style="margin-top:10px"><button class="btn-ghost" id="payAdd">+ Add payment</button><button class="btn btn-save" id="paySave">Save payments</button></div></details></div>`;}
+function wirePayments(){
+  const read=()=>{const rows=[...document.querySelectorAll('#payEditor .pay-row')];adminCfg.payments=rows.map(r=>({label:r.querySelector('.pl').value,amount:num(r.querySelector('.pa').value),date:r.querySelector('.pd').value}));};
+  const redo=()=>{AD.cfg=adminCfg;$('#c-__payments').outerHTML=paymentsHTML();wirePayments();};
+  const pa=$('#payAdd');if(pa)pa.onclick=async()=>{read();adminCfg.payments.push({label:'',amount:0,date:todayStr()});await saveConfig(adminCfg);redo();};
+  const ps=$('#paySave');if(ps)ps.onclick=async()=>{read();await saveConfig(adminCfg);toast('Payments saved');redo();};
+  document.querySelectorAll('.pay-del').forEach(b=>b.onclick=async()=>{read();adminCfg.payments.splice(num(b.dataset.i),1);await saveConfig(adminCfg);redo();});
+}
+function renderAllCards(){
+  const html=CARD_ORDER.map(x=>{
+    if(Array.isArray(x))return `<div class="row">${x.map(id=>`<div class="col" style="min-width:260px">${cardHTML(id)}</div>`).join('')}</div>`;
+    if(x==='__payments')return paymentsHTML();
+    return cardHTML(x);}).join('');
+  $('#adBody').innerHTML=alertsCardHTML(AD.alerts)+html;
+  wireAlertButtons(AD.alerts);
+  Object.keys(CARD_R).forEach(wireCard);wirePayments();
+}
+async function renderAdmin(){
+  const alerts=await stockAlerts();
+  const cfg=await loadConfig();adminCfg=cfg;
+  const per=[];
+  for(const id of COUNTERS){const d=await loadShopData(id);per.push({id,name:SHOPS[id].name,ents:d.entries||{},its:mergeItems(id,d.items),ph:d.photo||defPhoto(id)});}
+  AD={per,cfg,alerts};lastPer=per;
+  renderAllCards();updateAllBtn();
+  fireAlertNotification(alerts);
 }
 
 /* ---------- admin tabs ---------- */
