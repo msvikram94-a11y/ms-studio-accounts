@@ -97,6 +97,16 @@
   .empty{text-align:center;color:var(--muted);padding:30px 10px}.empty b{display:block;color:var(--ink-2);font-size:15px;margin-bottom:4px}
   .hint{font-size:12px;color:var(--muted);margin:-4px 0 10px}
   .carry{color:var(--blue);font-weight:700;font-size:11px}
+  /* attendance marking */
+  .attrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+  .mbtn{flex:1;min-width:110px;border:1.5px solid var(--line);background:#fff;border-radius:11px;padding:12px 10px;font-weight:800;font-size:14px;cursor:pointer;transition:.12s;text-align:center;color:var(--ink-2)}
+  .mbtn .ic{display:block;font-size:19px;margin-bottom:4px}
+  .mbtn.present.on{background:var(--green-bg);border-color:var(--green);color:var(--green)}
+  .mbtn.half.on{background:#fdf5e7;border-color:#d98b1f;color:#bd7c14}
+  .mbtn.absent.on{background:var(--red-bg);border-color:var(--red);color:var(--red)}
+  .mbtn:disabled{opacity:.5;cursor:not-allowed}
+  .att-p{background:var(--green)} .att-h{background:#d98b1f} .att-a{background:var(--red)} .att-o{background:#cfd4de}
+  .attcell{width:22px;height:22px;border-radius:6px;display:inline-grid;place-items:center;font-weight:800;font-size:11px;color:#fff;margin:0 auto}
   .tbl td.n{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
   /* admin */
   #admin{max-width:1000px;margin:0 auto;padding:0 14px 70px}
@@ -218,6 +228,15 @@
           <div class="col"><label class="lbl">Date</label><input class="inp" type="date" id="entryDate"></div>
           <div class="col"><label class="lbl">Opening balance (₹)</label><input class="inp num" type="number" id="opening" placeholder="0"></div>
           <div class="col"><label class="lbl">Name / by</label><select class="inp" id="sign"></select></div>
+        </div>
+        <div id="attendBlock" class="hide" style="margin-top:14px">
+          <label class="lbl">Attendance for <b id="attName" style="color:var(--ink)"></b></label>
+          <div class="attrow">
+            <button type="button" class="mbtn present" data-st="Present"><span class="ic">✓</span>Present</button>
+            <button type="button" class="mbtn half" data-st="Half day"><span class="ic">◑</span>Half day</button>
+            <button type="button" class="mbtn absent" data-st="Absent"><span class="ic">✕</span>Absent</button>
+          </div>
+          <div id="attConfirm" class="hide" style="margin-top:10px;padding:10px 13px;border-radius:9px;font-weight:700;font-size:13.5px"></div>
         </div>
       </div>
 
@@ -585,7 +604,7 @@ function prevClose(date,id){
 }
 function blankDay(date){
   return{date,opened:false,opening:0,sign:'',cash:0,gpay:0,tea:0,less:0,
-    o1:{amt:0,reason:''},o2:{amt:0,reason:''},notes:'',
+    o1:{amt:0,reason:''},o2:{amt:0,reason:''},notes:'',attendance:{},
     photos:photoSizes.map(p=>({size:p.size,count:0,waste:0})),
     stock:items.map(it=>({id:it.id,carried:prevClose(date,it.id),newStock:0,close:'',waste:0}))};
 }
@@ -608,7 +627,7 @@ function loadDay(date){
   // Opening ALWAYS = previous day's closing (+ any new stock). Re-derive every load so a
   // corrected previous-day closing flows straight into this day's opening.
   draft.stock.forEach(s=>{s.carried=prevClose(date,s.id);});
-  draft.o1=draft.o1||{amt:0,reason:''};draft.o2=draft.o2||{amt:0,reason:''};
+  draft.o1=draft.o1||{amt:0,reason:''};draft.o2=draft.o2||{amt:0,reason:''};draft.attendance=draft.attendance||{};
   $('#entryDate').value=draft.date;$('#gateDate').value=draft.date;
   $('#opening').value=draft.opening||'';renderSign();
   $('#cash').value=draft.cash||'';$('#gpay').value=draft.gpay||'';
@@ -764,13 +783,36 @@ function renderSign(){
   sel.innerHTML=`<option value="">— select name —</option>`+
     list.map(n=>`<option value="${esc(n)}" ${draft.sign===n?'selected':''}>${esc(n)}</option>`).join('')+
     `<option value="__add__">➕ Add new name…</option>`;
+  renderAttendance();
 }
+function renderAttendance(){
+  const blk=$('#attendBlock');if(!blk)return;
+  const nm=draft.sign&&String(draft.sign).trim();
+  if(!nm){blk.classList.add('hide');return;}
+  blk.classList.remove('hide');
+  $('#attName').textContent=nm;
+  draft.attendance=draft.attendance||{};
+  const rec=draft.attendance[nm];const cur=rec&&rec.status;
+  document.querySelectorAll('#attendBlock .mbtn').forEach(b=>b.classList.toggle('on',b.dataset.st===cur));
+  const cf=$('#attConfirm');
+  if(cur){const col=cur==='Present'?'var(--green-bg);color:var(--green)':(cur==='Half day'?'#fdf5e7;color:#bd7c14':'var(--red-bg);color:var(--red)');
+    cf.className='';cf.style.cssText='margin-top:10px;padding:10px 13px;border-radius:9px;font-weight:700;font-size:13.5px;background:'+col;
+    cf.innerHTML='✓ '+esc(nm)+' marked <b>'+esc(cur)+'</b>'+(rec.time?' at '+rec.time:'');
+  } else { cf.className='hide'; }
+}
+document.querySelectorAll('#attendBlock .mbtn').forEach(b=>b.addEventListener('click',()=>{
+  const nm=draft.sign&&String(draft.sign).trim();if(!nm){toast('Select your name first');return;}
+  draft.attendance=draft.attendance||{};
+  const t=new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  draft.attendance[nm]={status:b.dataset.st,time:t};
+  renderAttendance();autosaveDay();
+}));
 $('#sign').addEventListener('change',async e=>{
   if(e.target.value==='__add__'){
     const r=await askText({title:'Add staff name',fields:[{key:'name',label:'Name',placeholder:'e.g. Sathiya'}],okText:'Add'});
     if(r&&r.name.trim()){const nm=r.name.trim();if(!addedStaff.includes(nm))addedStaff.push(nm);await Store.set(KK.staff,addedStaff);draft.sign=nm;}
     renderSign();
-  } else { draft.sign=e.target.value; }
+  } else { draft.sign=e.target.value;renderAttendance(); }
 });
 $('#notes').addEventListener('input',e=>{draft.notes=e.target.value;});
 $('#o1amt').addEventListener('input',e=>{draft.o1.amt=num(e.target.value);recalc();});
@@ -1295,10 +1337,24 @@ perf(r){const list=shopsFor(r);const dayAll={};
     <h2 style="margin-top:16px">By day of the week <span class="sub">— average business${dB?`; strongest <b style="color:var(--green)">${dB.name}</b>${dW&&dW.name!==dB.name?`, weakest <b style="color:var(--red)">${dW.name}</b>`:''}`:''}</span></h2>
     <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Weekday</th><th style="text-align:right">Days</th><th style="text-align:right">Avg business</th></tr></thead><tbody>${drow}</tbody></table></div>
     <h2 style="margin-top:16px">All days <span class="sub">— scroll to see every day</span></h2>
-    <div class="scrollbox"><table class="tbl" style="margin:0"><thead><tr><th class="l">Date</th><th class="l">Day</th><th style="text-align:right">Total business</th></tr></thead><tbody>${lrow}</tbody></table></div>`};}
+    <div class="scrollbox"><table class="tbl" style="margin:0"><thead><tr><th class="l">Date</th><th class="l">Day</th><th style="text-align:right">Total business</th></tr></thead><tbody>${lrow}</tbody></table></div>`};},
+attend(r){const list=shopsFor(r);
+  const blocks=list.map(p=>{
+    const dates=datesIn(p,r,false).filter(dt=>p.ents[dt].attendance&&Object.keys(p.ents[dt].attendance).length);
+    if(!dates.length)return '';
+    const nmset={};dates.forEach(dt=>Object.keys(p.ents[dt].attendance).forEach(nm=>nmset[nm]=1));const names=Object.keys(nmset).sort();
+    const head='<tr><th class="l">Staff</th>'+dates.map(dt=>`<th title="${pretty(dt)}">${dt.slice(8,10)}/${dt.slice(5,7)}</th>`).join('')+'<th>Present</th></tr>';
+    const body=names.map(nm=>{let pd=0;const cells=dates.map(dt=>{const rec=p.ents[dt].attendance[nm];const st=rec&&rec.status;
+        let cls='att-o',lab='·';if(st==='Present'){cls='att-p';lab='P';pd+=1;}else if(st==='Half day'){cls='att-h';lab='H';pd+=0.5;}else if(st==='Absent'){cls='att-a';lab='A';}
+        return `<td><span class="attcell ${cls}">${lab}</span></td>`;}).join('');
+      return `<tr><td class="l" style="position:sticky;left:0;background:#fff;font-weight:700;box-shadow:1px 0 0 var(--line)">${esc(nm)}</td>${cells}<td class="n" style="font-weight:800;color:var(--green)">${pd}</td></tr>`;}).join('');
+    return `<div style="font-size:12px;color:var(--muted);margin:12px 0 6px"><b>${esc(p.name)}</b></div><div class="scrollbox" style="max-height:none"><table class="tbl" style="margin:0;font-size:12px">${head}${body}</table></div>`;
+  }).filter(Boolean).join('');
+  if(!blocks)return{title:'Attendance',sub:'— P present · H half · A absent',body:noData(r,'No attendance marked in this range')};
+  return{title:'Attendance',sub:'— P present · H half · A absent · "Present" counts 1, "Half day" ½',body:blocks};}
 };
 /* layout order; arrays = side-by-side pair */
-const CARD_ORDER=['summary','trend','profit','__payments','collect','staff','each','share','prods','pprofit',['newstock','sold'],'matrix','ledger','waste','tea','biz','monthly','perf'];
+const CARD_ORDER=['summary','trend','profit','__payments','collect','staff','attend','each','share','prods','pprofit',['newstock','sold'],'matrix','ledger','waste','tea','biz','monthly','perf'];
 
 function cardHTML(id){let out;
   try{out=CARD_R[id](getRange(id));}catch(err){console.error(id,err);out={title:id,body:`<div class="empty">Could not build this card: ${esc(err.message)}</div>`};}
