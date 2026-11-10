@@ -108,6 +108,43 @@
   .att-p{background:var(--green)} .att-h{background:#d98b1f} .att-a{background:var(--red)} .att-o{background:#cfd4de}
   .attcell{width:22px;height:22px;border-radius:6px;display:inline-grid;place-items:center;font-weight:800;font-size:11px;color:#fff;margin:0 auto}
   .tbl td.n{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+  /* attendance — staff marking card + admin register */
+  .att-area{display:inline-flex;border:1px solid #d6e2f5;border-radius:9px;overflow:hidden;margin:10px 0 2px}
+  .att-area button{border:none;background:#fff;padding:9px 16px;font-weight:700;font-size:13px;cursor:pointer;color:var(--blue);border-left:1px solid #d6e2f5}
+  .att-area button:first-child{border-left:none}
+  .att-area button.on{background:#eef2fb}
+  .att-done{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:7px}
+  .att-done .nm{flex:1;font-weight:700}
+  .att-pill{font-size:11px;font-weight:800;padding:2px 9px;border-radius:12px}
+  .att-pill.P{background:var(--green-bg);color:var(--green)}.att-pill.H{background:#fdf5e7;color:#bd7c14}.att-pill.A{background:var(--red-bg);color:var(--red)}
+  .att-loc{font-size:10px;color:var(--blue);background:#eef2fb;border-radius:10px;padding:1px 7px;font-weight:700}
+  .att-undo{border:none;background:#f2f3f6;color:var(--muted);border-radius:7px;padding:5px 9px;font-size:12px;font-weight:700;cursor:pointer}
+  .att-undo:hover{background:var(--red-bg);color:var(--red)}
+  .pricard{border:2px solid var(--red);background:#fdf1ef}
+  .pricard h2{color:var(--red)}
+  .prow{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #f1c7c0;border-radius:10px;margin-bottom:8px;background:#fff}
+  .prow .nm{flex:1;font-weight:800}
+  .prow .mut{font-size:12px;color:var(--muted)}
+  .prow .fl{font-size:10.5px;font-weight:800;color:#fff;background:var(--red);padding:2px 8px;border-radius:12px;text-transform:uppercase}
+  .cnt{font-weight:800}
+  .att-reg th.wknd{background:#eef2fb;color:var(--blue)}
+  .att-reg th.holi{background:#f5eefb;color:#8a4fc0}
+  .att-reg td.wknd{background:#f5f8ff}
+  .att-reg td.holi{background:#faf5ff}
+  .att-reg td.c{cursor:pointer}
+  .att-reg .dow{font-size:9px;font-weight:800;display:block;line-height:1.1}
+  .attcell.ringA{box-shadow:0 0 0 2px #fff,0 0 0 3px var(--red)}
+  .holchip{display:inline-flex;align-items:center;gap:6px;background:#f5eefb;border:1px solid #e0cff5;color:#7b45c7;border-radius:20px;padding:4px 10px;font-size:12.5px;font-weight:700;margin:0 6px 6px 0}
+  .holchip button{border:none;background:none;color:#7b45c7;cursor:pointer;font-size:14px;line-height:1;padding:0}
+  .staffrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #f1f3f7}
+  .staffrow:last-child{border-bottom:none}
+  .staffrow .nm{flex:1;font-weight:700}
+  .staffrow .nm input{width:100%;max-width:240px;padding:7px 9px;border:1px solid var(--amber);border-radius:8px;font-size:14px;font-weight:700}
+  .mini{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 11px;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--ink-2)}
+  .mini.del:hover{background:var(--red-bg);color:var(--red);border-color:var(--red)}
+  .mini.save{background:var(--amber);color:#231803;border-color:var(--amber)}
+  .att-res{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:7px}
+  .att-res .nm{flex:1;font-weight:700}
   /* admin */
   #admin{max-width:1000px;margin:0 auto;padding:0 14px 70px}
   .ad-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
@@ -200,6 +237,32 @@
   <!-- DAY -->
   <section id="tab-day">
 
+    <!-- ATTENDANCE: staff mark themselves on login, before accounts -->
+    <div class="card hide" id="attMarkCard" style="border:2px solid #f1dcae">
+      <h2>Mark attendance — today <span class="sub" id="attToday"></span></h2>
+      <p class="hint" id="attHint">Pick your name, then tap Present / Half day / Absent. Once marked at any counter, the name drops off every counter's list.</p>
+      <div id="attNoStaff" class="hide empty" style="padding:16px">No staff names added yet. Ask the admin to add names in the Attendance tab.</div>
+      <div id="attPickWrap">
+        <label class="lbl">Select staff name</label>
+        <select class="inp" id="attPick"></select>
+      </div>
+      <div id="attPicked" class="hide" style="margin-top:14px;border:1px solid var(--line);border-radius:12px;padding:14px;background:#fbfcfe">
+        <div style="font-weight:800;font-size:16px;margin-bottom:4px" id="attPn"></div>
+        <div id="attAreaWrap" class="hide" style="font-size:12.5px;color:var(--muted)">Worked at:
+          <div class="att-area"><button type="button" id="attAC" class="on" data-area="C">Counter</button><button type="button" id="attAM" data-area="M">Manufacturing</button></div>
+        </div>
+        <div class="attrow">
+          <button type="button" class="mbtn present" data-st="P"><span class="ic">✓</span>Present</button>
+          <button type="button" class="mbtn half" data-st="H"><span class="ic">◑</span>Half day</button>
+          <button type="button" class="mbtn absent" data-st="A"><span class="ic">✕</span>Absent</button>
+        </div>
+      </div>
+      <div style="margin-top:16px">
+        <label class="lbl">Marked today — all counters</label>
+        <div id="attDone"></div>
+      </div>
+    </div>
+
     <!-- GATE: new stock (done at start of day, before selling) -->
     <div id="dayGate" class="hide">
       <div class="card">
@@ -228,15 +291,6 @@
           <div class="col"><label class="lbl">Date</label><input class="inp" type="date" id="entryDate"></div>
           <div class="col"><label class="lbl">Opening balance (₹)</label><input class="inp num" type="number" id="opening" placeholder="0"></div>
           <div class="col"><label class="lbl">Name / by</label><select class="inp" id="sign"></select></div>
-        </div>
-        <div id="attendBlock" class="hide" style="margin-top:14px">
-          <label class="lbl">Attendance for <b id="attName" style="color:var(--ink)"></b></label>
-          <div class="attrow">
-            <button type="button" class="mbtn present" data-st="Present"><span class="ic">✓</span>Present</button>
-            <button type="button" class="mbtn half" data-st="Half day"><span class="ic">◑</span>Half day</button>
-            <button type="button" class="mbtn absent" data-st="Absent"><span class="ic">✕</span>Absent</button>
-          </div>
-          <div id="attConfirm" class="hide" style="margin-top:10px;padding:10px 13px;border-radius:9px;font-weight:700;font-size:13.5px"></div>
         </div>
       </div>
 
@@ -333,7 +387,7 @@
     </div>
     <div class="who"><button class="btn-ghost" id="adLogout">Log out</button></div>
   </div>
-  <div class="tabs" style="max-width:640px"><button data-adtab="dash" class="active">Dashboard</button><button data-adtab="edit">Edit accounts</button><button data-adtab="prices">Products &amp; prices</button></div>
+  <div class="tabs" style="max-width:760px"><button data-adtab="dash" class="active">Dashboard</button><button data-adtab="att">Attendance</button><button data-adtab="edit">Edit accounts</button><button data-adtab="prices">Products &amp; prices</button></div>
   <div class="card no-print" id="adDateCard">
     <div class="row" style="align-items:center">
       <div class="col" style="min-width:240px"><label class="lbl">Date range — all cards</label><button type="button" class="rng-btn wide" data-rng="__all" id="adAllRange"></button></div>
@@ -344,6 +398,7 @@
   <div id="adBody"></div>
   <div id="adPrices" class="hide"></div>
   <div id="adEdit" class="hide"></div>
+  <div id="adAtt" class="hide"></div>
 </main>
 
 <div id="rngPop" class="hide"></div>
@@ -396,6 +451,23 @@ const DEFAULT_CFG={salary:250000,rent:350000,margin:50,purchases:0,loanInterest:
 let adminCfg=null,lastPer=[],lastDate='';
 async function loadConfig(){const d=await loadShopData('settings');const c=Object.assign({},DEFAULT_CFG,(d&&d.items&&d.items[0])||{});if(!c.payments)c.payments=JSON.parse(JSON.stringify(DEFAULT_CFG.payments));return c;}
 async function saveConfig(cfg){await saveShopData('settings',{items:[cfg]});}
+
+/* ---------- staff attendance (shared across counters, cloud-synced) ---------- */
+/* counters whose staff mark attendance — store rooms excluded */
+const ATT_COUNTERS=['yercaud','photobox','pykara','ooty'];
+/* short location tag per counter; Yercaud splits into Counter (Y) / Manufacturing (M) by area */
+const LOC_TAG={yercaud:'Y',photobox:'B',pykara:'P',ooty:'O'};
+const LOC_NAME={Y:'Yercaud Counter',M:'Manufacturing',B:'Photobox',P:'Pykara',O:'Ooty'};
+function locOf(rec){if(!rec)return '';if(rec.counter==='yercaud')return rec.area==='M'?'M':'Y';return LOC_TAG[rec.counter]||'';}
+let attData={staff:[],holidays:[],days:{}};
+async function loadAtt(){const d=await loadShopData('attendance');const a=(d&&d.items&&d.items[0])||{};
+  attData={staff:Array.isArray(a.staff)?a.staff:[],holidays:Array.isArray(a.holidays)?a.holidays:[],days:a.days||{}};return attData;}
+async function saveAtt(){await saveShopData('attendance',{items:[attData]});}
+/* record/clear one person's mark for today, re-reading first so two counters don't clobber each other */
+async function attMark(name,rec){await loadAtt();const t=todayStr();attData.days[t]=attData.days[t]||{};
+  if(rec)attData.days[t][name]=rec;else delete attData.days[t][name];await saveAtt();}
+function isWeekendStr(dt){const g=new Date(dt+'T00:00:00').getDay();return g===0||g===6;}
+function isHolidayStr(dt){return (attData.holidays||[]).indexOf(dt)>=0;}
 const SHOPS={
   yercaud :{id:'yercaud', name:'Yercaud',  pass:'yercaudpass',  ready:true },
   photobox:{id:'photobox',name:'Photobox', pass:'photoboxpass', ready:true },
@@ -580,6 +652,7 @@ async function enterShop(s){
   photoSizes=d.photo||defPhoto(s.id);
   addedStaff=await Store.get(KK.staff)||[];
   loadDay(todayStr());
+  await initStaffAttend();
   $('#rFrom').value=firstOfMonth();$('#rTo').value=todayStr();
   renderHistory();
 }
@@ -783,37 +856,75 @@ function renderSign(){
   sel.innerHTML=`<option value="">— select name —</option>`+
     list.map(n=>`<option value="${esc(n)}" ${draft.sign===n?'selected':''}>${esc(n)}</option>`).join('')+
     `<option value="__add__">➕ Add new name…</option>`;
-  renderAttendance();
 }
-function renderAttendance(){
-  const blk=$('#attendBlock');if(!blk)return;
-  const nm=draft.sign&&String(draft.sign).trim();
-  if(!nm){blk.classList.add('hide');return;}
-  blk.classList.remove('hide');
-  $('#attName').textContent=nm;
-  draft.attendance=draft.attendance||{};
-  const rec=draft.attendance[nm];const cur=rec&&rec.status;
-  document.querySelectorAll('#attendBlock .mbtn').forEach(b=>b.classList.toggle('on',b.dataset.st===cur));
-  const cf=$('#attConfirm');
-  if(cur){const col=cur==='Present'?'var(--green-bg);color:var(--green)':(cur==='Half day'?'#fdf5e7;color:#bd7c14':'var(--red-bg);color:var(--red)');
-    cf.className='';cf.style.cssText='margin-top:10px;padding:10px 13px;border-radius:9px;font-weight:700;font-size:13.5px;background:'+col;
-    cf.innerHTML='✓ '+esc(nm)+' marked <b>'+esc(cur)+'</b>'+(rec.time?' at '+rec.time:'');
-  } else { cf.className='hide'; }
-}
-document.querySelectorAll('#attendBlock .mbtn').forEach(b=>b.addEventListener('click',()=>{
-  const nm=draft.sign&&String(draft.sign).trim();if(!nm){toast('Select your name first');return;}
-  draft.attendance=draft.attendance||{};
-  const t=new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
-  draft.attendance[nm]={status:b.dataset.st,time:t};
-  renderAttendance();autosaveDay();
-}));
 $('#sign').addEventListener('change',async e=>{
   if(e.target.value==='__add__'){
     const r=await askText({title:'Add staff name',fields:[{key:'name',label:'Name',placeholder:'e.g. Sathiya'}],okText:'Add'});
     if(r&&r.name.trim()){const nm=r.name.trim();if(!addedStaff.includes(nm))addedStaff.push(nm);await Store.set(KK.staff,addedStaff);draft.sign=nm;}
     renderSign();
-  } else { draft.sign=e.target.value;renderAttendance(); }
+  } else { draft.sign=e.target.value; }
 });
+
+/* ---------- staff attendance marking (shown on login, above the day sheet) ---------- */
+let attSel='',attArea='C';
+function attIsMarkable(){return !!(shop&&!adminMode&&ATT_COUNTERS.indexOf(shop.id)>=0);}
+async function initStaffAttend(){
+  const card=$('#attMarkCard');if(!card)return;
+  if(!attIsMarkable()){card.classList.add('hide');return;}
+  card.classList.remove('hide');
+  $('#attToday').textContent='— '+pretty(todayStr());
+  attSel='';attArea='C';
+  await loadAtt();
+  renderAttPick();renderAttPicked();renderAttDone();
+}
+function attMarkedToday(){return (attData.days&&attData.days[todayStr()])||{};}
+function renderAttPick(){
+  const sel=$('#attPick');if(!sel)return;
+  const marked=attMarkedToday();
+  const avail=(attData.staff||[]).filter(n=>!marked[n]);
+  $('#attNoStaff').classList.toggle('hide',(attData.staff||[]).length>0);
+  $('#attPickWrap').classList.toggle('hide',(attData.staff||[]).length===0);
+  if(!avail.length&&(attData.staff||[]).length){
+    sel.innerHTML='<option value="">All staff marked ✓</option>';sel.value='';return;
+  }
+  sel.innerHTML='<option value="">— select name —</option>'+avail.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  sel.value=attSel||'';
+}
+function renderAttPicked(){
+  const box=$('#attPicked');if(!box)return;
+  if(!attSel){box.classList.add('hide');return;}
+  box.classList.remove('hide');
+  $('#attPn').textContent=attSel;
+  const yer=(shop&&shop.id==='yercaud');
+  $('#attAreaWrap').classList.toggle('hide',!yer);
+  $('#attAC').classList.toggle('on',attArea==='C');
+  $('#attAM').classList.toggle('on',attArea==='M');
+}
+function renderAttDone(){
+  const box=$('#attDone');if(!box)return;
+  const marked=attMarkedToday();const names=Object.keys(marked);
+  if(!names.length){box.innerHTML='<div class="empty" style="padding:10px 0">No one marked yet today.</div>';return;}
+  const stName={P:'Present',H:'Half day',A:'Absent'};
+  box.innerHTML=names.sort().map(n=>{const m=marked[n];const lt=locOf(m);const loc=lt?LOC_NAME[lt]:'';
+    const mine=(m.by===shop.id);
+    return `<div class="att-done"><span class="nm">${esc(n)}</span>${loc&&m.status!=='A'?`<span class="att-loc">${esc(loc)}</span>`:''}<span class="att-pill ${m.status}">${stName[m.status]||m.status}</span>${mine?`<button class="att-undo" data-n="${esc(n)}">Undo</button>`:''}</div>`;}).join('');
+  box.querySelectorAll('.att-undo').forEach(b=>b.onclick=async()=>{
+    await attMark(b.dataset.n,null);
+    renderAttPick();renderAttDone();toast('Removed '+b.dataset.n+"'s mark");
+  });
+}
+$('#attPick').addEventListener('change',e=>{attSel=e.target.value;attArea='C';renderAttPicked();});
+document.querySelectorAll('#attAreaWrap .att-area button').forEach(b=>b.addEventListener('click',()=>{attArea=b.dataset.area;renderAttPicked();}));
+document.querySelectorAll('#attPicked .mbtn').forEach(b=>b.addEventListener('click',async()=>{
+  if(!attSel){toast('Select a name first');return;}
+  const st=b.dataset.st;const name=attSel;
+  const t=new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  const rec={status:st,counter:shop.id,area:(shop.id==='yercaud'&&st!=='A')?attArea:'',time:t,by:shop.id};
+  await attMark(name,rec);
+  attSel='';attArea='C';
+  renderAttPick();renderAttPicked();renderAttDone();
+  toast(name+' marked '+({P:'Present',H:'Half day',A:'Absent'}[st]));
+}));
 $('#notes').addEventListener('input',e=>{draft.notes=e.target.value;});
 $('#o1amt').addEventListener('input',e=>{draft.o1.amt=num(e.target.value);recalc();});
 $('#o1reason').addEventListener('input',e=>{draft.o1.reason=e.target.value;});
@@ -1079,7 +1190,7 @@ function presetRange(k){const t=todayStr();const d=new Date(t+'T00:00:00');
   }}
 /* card registry defaults: d = default preset, shop = card supports a shop filter */
 const CARD_DEF={
-  summary:{d:'today',shop:true}, trend:{d:'30d',shop:true}, profit:{d:'month',shop:false},
+  summary:{d:'today',shop:true}, attpri:{d:'month',shop:false}, trend:{d:'30d',shop:true}, profit:{d:'month',shop:false},
   collect:{d:'today',shop:true}, staff:{d:'all',shop:true}, each:{d:'today',shop:true},
   share:{d:'today',shop:false}, prods:{d:'today',shop:true}, pprofit:{d:'today',shop:true},
   newstock:{d:'today',shop:true}, sold:{d:'today',shop:true}, matrix:{d:'today',shop:false},
@@ -1338,23 +1449,31 @@ perf(r){const list=shopsFor(r);const dayAll={};
     <div style="overflow-x:auto"><table class="tbl"><thead><tr><th class="l">Weekday</th><th style="text-align:right">Days</th><th style="text-align:right">Avg business</th></tr></thead><tbody>${drow}</tbody></table></div>
     <h2 style="margin-top:16px">All days <span class="sub">— scroll to see every day</span></h2>
     <div class="scrollbox"><table class="tbl" style="margin:0"><thead><tr><th class="l">Date</th><th class="l">Day</th><th style="text-align:right">Total business</th></tr></thead><tbody>${lrow}</tbody></table></div>`};},
-attend(r){const list=shopsFor(r);
-  const blocks=list.map(p=>{
-    const dates=datesIn(p,r,false).filter(dt=>p.ents[dt].attendance&&Object.keys(p.ents[dt].attendance).length);
-    if(!dates.length)return '';
-    const nmset={};dates.forEach(dt=>Object.keys(p.ents[dt].attendance).forEach(nm=>nmset[nm]=1));const names=Object.keys(nmset).sort();
-    const head='<tr><th class="l">Staff</th>'+dates.map(dt=>`<th title="${pretty(dt)}">${dt.slice(8,10)}/${dt.slice(5,7)}</th>`).join('')+'<th>Present</th></tr>';
-    const body=names.map(nm=>{let pd=0;const cells=dates.map(dt=>{const rec=p.ents[dt].attendance[nm];const st=rec&&rec.status;
-        let cls='att-o',lab='·';if(st==='Present'){cls='att-p';lab='P';pd+=1;}else if(st==='Half day'){cls='att-h';lab='H';pd+=0.5;}else if(st==='Absent'){cls='att-a';lab='A';}
-        return `<td><span class="attcell ${cls}">${lab}</span></td>`;}).join('');
-      return `<tr><td class="l" style="position:sticky;left:0;background:#fff;font-weight:700;box-shadow:1px 0 0 var(--line)">${esc(nm)}</td>${cells}<td class="n" style="font-weight:800;color:var(--green)">${pd}</td></tr>`;}).join('');
-    return `<div style="font-size:12px;color:var(--muted);margin:12px 0 6px"><b>${esc(p.name)}</b></div><div class="scrollbox" style="max-height:none"><table class="tbl" style="margin:0;font-size:12px">${head}${body}</table></div>`;
-  }).filter(Boolean).join('');
-  if(!blocks)return{title:'Attendance',sub:'— P present · H half · A absent',body:noData(r,'No attendance marked in this range')};
-  return{title:'Attendance',sub:'— P present · H half · A absent · "Present" counts 1, "Half day" ½',body:blocks};}
+attpri(r){const names=attData.staff||[];
+  const sub='— missing weekends &amp; government holidays (your busiest days)';
+  if(!names.length)return{title:'⚠ High priority — frequent weekend / holiday absentees',sub,cls:'pricard',
+    body:`<div class="empty" style="padding:16px">Add staff names in the <b>Attendance</b> tab to start tracking this.</div>`};
+  const tally={};names.forEach(n=>tally[n]={w:0,h:0,t:0});
+  Object.keys(attData.days||{}).filter(dt=>dt>=r.from&&dt<=r.to&&dt>=DATA_START).forEach(dt=>{
+    const wknd=isWeekendStr(dt),hol=isHolidayStr(dt);if(!wknd&&!hol)return;
+    const rec=attData.days[dt]||{};
+    const operated=names.some(n=>rec[n]&&(rec[n].status==='P'||rec[n].status==='H'));
+    if(!operated)return;              // shop didn't operate that day — nobody counted absent
+    names.forEach(n=>{const m=rec[n];const present=m&&(m.status==='P'||m.status==='H');
+      if(present)return;if(wknd)tally[n].w++;if(hol)tally[n].h++;tally[n].t++;});
+  });
+  const rows=names.map(n=>({n,w:tally[n].w,h:tally[n].h,t:tally[n].t})).filter(x=>x.t>0).sort((a,b)=>b.t-a.t);
+  if(!rows.length)return{title:'⚠ High priority — frequent weekend / holiday absentees',sub,cls:'pricard',
+    body:`<div class="empty" style="padding:16px"><b>All clear</b>No weekend or government-holiday absences in this range.</div>`};
+  const body=rows.map(x=>{const hi=x.t>=3;
+    return `<div class="prow"><span class="nm">${esc(x.n)}</span>`+
+      `<span class="mut">weekend <span class="cnt" style="color:var(--red)">${x.w}</span> · holiday <span class="cnt" style="color:#8a4fc0">${x.h}</span> · total <span class="cnt">${x.t}</span></span>`+
+      (hi?'<span class="fl">High</span>':'')+'</div>';}).join('');
+  return{title:'⚠ High priority — frequent weekend / holiday absentees',sub,cls:'pricard',
+    body:`<p class="hint" style="margin-top:-4px">Ranked by peak days skipped. <b>High</b> = 3 or more. Long weekends (a holiday next to a Saturday/Sunday) hit hardest.</p>${body}`};}
 };
 /* layout order; arrays = side-by-side pair */
-const CARD_ORDER=['summary','trend','profit','__payments','collect','staff','attend','each','share','prods','pprofit',['newstock','sold'],'matrix','ledger','waste','tea','biz','monthly','perf'];
+const CARD_ORDER=['summary','attpri','trend','profit','__payments','collect','staff','each','share','prods','pprofit',['newstock','sold'],'matrix','ledger','waste','tea','biz','monthly','perf'];
 
 function cardHTML(id){let out;
   try{out=CARD_R[id](getRange(id));}catch(err){console.error(id,err);out={title:id,body:`<div class="empty">Could not build this card: ${esc(err.message)}</div>`};}
@@ -1400,6 +1519,7 @@ function renderAllCards(){
 async function renderAdmin(){
   const alerts=await stockAlerts();
   const cfg=await loadConfig();adminCfg=cfg;
+  await loadAtt();
   const per=[];
   for(const id of COUNTERS){const d=await loadShopData(id);per.push({id,name:SHOPS[id].name,ents:d.entries||{},its:mergeItems(id,d.items),ph:d.photo||defPhoto(id)});}
   AD={per,cfg,alerts};lastPer=per;
@@ -1415,8 +1535,10 @@ function setAdTab(n){
   $('#adBody').classList.toggle('hide',!dash);
   $('#adPrices').classList.toggle('hide',n!=='prices');
   $('#adEdit').classList.toggle('hide',n!=='edit');
+  $('#adAtt').classList.toggle('hide',n!=='att');
   if(n==='prices')renderPrices();
   if(n==='edit')renderEditPicker();
+  if(n==='att')renderAttTab();
 }
 document.querySelectorAll('[data-adtab]').forEach(b=>b.addEventListener('click',()=>setAdTab(b.dataset.adtab)));
 
@@ -1466,6 +1588,7 @@ async function adminEditCounter(id,date){
   photoSizes=d.photo||defPhoto(id);
   addedStaff=await Store.get(KK.staff)||[];
   loadDay(date);
+  await initStaffAttend();
   $('#rFrom').value=firstOfMonth();$('#rTo').value=todayStr();
   renderHistory();
 }
@@ -1474,6 +1597,157 @@ $('#backToAdmin').addEventListener('click',async()=>{
   document.body.classList.remove('hide-money','storeroom');
   shop=SHOPS.vikram;await showAdmin();setAdTab('edit');
 });
+
+/* ---------- admin: staff attendance (manage names, holidays, register, filter) ---------- */
+let attMonth=todayStr().slice(0,7), attEdit=-1, attFLoc='Y', attFDay=todayStr();
+function refreshPri(){const el=$('#c-attpri');if(el)renderCard('attpri');}
+function seedStaffFromSigns(){
+  if((attData.staff||[]).length||Object.keys(attData.days||{}).length)return false;
+  const set=new Set();(AD&&AD.per||[]).forEach(p=>Object.values(p.ents||{}).forEach(e=>{if(e.sign&&String(e.sign).trim())set.add(String(e.sign).trim());}));
+  if(!set.size)return false;attData.staff=[...set].sort((a,b)=>a.localeCompare(b));return true;
+}
+async function renderAttTab(){
+  await loadAtt();
+  if(seedStaffFromSigns())await saveAtt();
+  const w=$('#adAtt');
+  w.innerHTML=`
+    <div class="card">
+      <h2>Staff <span class="sub">— one shared list for every counter</span></h2>
+      <p class="hint">Add, rename or remove names. Nobody is tied to manufacturing — that's chosen day-by-day while marking at Yercaud. Renaming keeps that person's past attendance linked.</p>
+      <div id="amStaff"></div>
+      <div class="row" style="margin-top:12px;gap:8px">
+        <input class="inp" id="amNew" placeholder="New staff name…" style="flex:1;min-width:160px">
+        <button class="btn btn-save" id="amAdd" style="max-width:150px">+ Add staff</button>
+      </div>
+    </div>
+
+    <div class="card" style="border-color:#e0cff5;background:#faf6ff">
+      <h2 style="color:#8a4fc0">Government holidays</h2>
+      <p class="hint">Mark public-holiday dates. Absences on these (and weekends) feed the high-priority list on the dashboard and are shaded in the register.</p>
+      <div id="amHoli" style="margin-bottom:10px"></div>
+      <div class="row" style="gap:8px;align-items:flex-end">
+        <div class="col" style="max-width:220px"><label class="lbl">Add a holiday</label><input class="inp" type="date" id="amHoliDate"></div>
+        <div class="col" style="max-width:120px"><button class="btn" id="amHoliAdd" style="background:#8a4fc0;color:#fff;width:100%">Add</button></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Who worked where <span class="sub">— filter by location and day</span></h2>
+      <div class="row" style="align-items:flex-end">
+        <div class="col" style="max-width:240px"><label class="lbl">Location</label>
+          <select class="inp" id="amFLoc">
+            <option value="Y">Yercaud — Counter</option>
+            <option value="M">Yercaud — Manufacturing</option>
+            <option value="B">Photobox</option>
+            <option value="P">Pykara</option>
+            <option value="O">Ooty</option>
+            <option value="*">All locations</option>
+          </select></div>
+        <div class="col" style="max-width:200px"><label class="lbl">Day</label><input class="inp" type="date" id="amFDay" value="${attFDay}"></div>
+      </div>
+      <div id="amFilterOut" style="margin-top:14px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd"><h2 style="margin:0">Attendance register</h2>
+        <div><label class="lbl" style="display:inline-block;margin:0 6px 0 0">Month</label><input class="inp" type="month" id="amMonth" value="${attMonth}" style="width:auto;display:inline-block"></div></div>
+      <p class="hint">Weekend columns blue, government holidays purple. An absence on either is ringed red. Tap any cell to correct it (unmarked → Present → Half → Absent → unmarked). Present counts 1, Half ½.</p>
+      <div class="tlegend">
+        <span class="tl"><span class="attcell att-p" style="width:16px;height:16px">P</span> Present</span>
+        <span class="tl"><span class="attcell att-h" style="width:16px;height:16px">H</span> Half day</span>
+        <span class="tl"><span class="attcell att-a" style="width:16px;height:16px">A</span> Absent</span>
+        <span class="tl"><span class="attcell att-a ringA" style="width:16px;height:16px">A</span> Weekend/holiday absent</span>
+      </div>
+      <div id="amReg" style="margin-top:10px"></div>
+    </div>`;
+  $('#amNew').addEventListener('keydown',e=>{if(e.key==='Enter')amAddName();});
+  $('#amAdd').onclick=amAddName;
+  $('#amHoliAdd').onclick=amAddHoliday;
+  $('#amFLoc').value=attFLoc;$('#amFLoc').onchange=e=>{attFLoc=e.target.value;renderFilterOut();};
+  $('#amFDay').onchange=e=>{attFDay=e.target.value;renderFilterOut();};
+  $('#amMonth').onchange=e=>{attMonth=e.target.value||attMonth;renderRegister();};
+  renderStaffMgr();renderHolidays();renderFilterOut();renderRegister();
+}
+function renderStaffMgr(){
+  const box=$('#amStaff');const list=attData.staff||[];
+  if(!list.length){box.innerHTML='<div class="empty" style="padding:14px">No staff yet. Add names below.</div>';return;}
+  box.innerHTML=list.map((n,i)=>{
+    if(i===attEdit)return `<div class="staffrow"><span class="nm"><input id="amEd" value="${esc(n)}"></span><button class="mini save" data-save="${i}">Save</button><button class="mini" data-cancel="1">Cancel</button></div>`;
+    return `<div class="staffrow"><span class="nm">${esc(n)}</span><button class="mini" data-edit="${i}">Rename</button><button class="mini del" data-del="${i}">Remove</button></div>`;}).join('');
+  if(attEdit>=0){const e=$('#amEd');if(e){e.focus();e.select();e.addEventListener('keydown',ev=>{if(ev.key==='Enter')amSaveName(attEdit);});}}
+  box.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{attEdit=num(b.dataset.edit);renderStaffMgr();});
+  box.querySelectorAll('[data-cancel]').forEach(b=>b.onclick=()=>{attEdit=-1;renderStaffMgr();});
+  box.querySelectorAll('[data-save]').forEach(b=>b.onclick=()=>amSaveName(num(b.dataset.save)));
+  box.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>amRemoveName(num(b.dataset.del)));
+}
+async function amAddName(){const inp=$('#amNew');const v=(inp.value||'').trim();if(!v)return;
+  if((attData.staff||[]).some(n=>n.toLowerCase()===v.toLowerCase())){toast('That name is already on the list');return;}
+  await loadAtt();attData.staff.push(v);attData.staff.sort((a,b)=>a.localeCompare(b));await saveAtt();
+  inp.value='';renderStaffMgr();refreshPri();toast('Added '+v);}
+async function amSaveName(i){const v=($('#amEd').value||'').trim();if(!v){attEdit=-1;renderStaffMgr();return;}
+  await loadAtt();const old=attData.staff[i];if(old&&v!==old){
+    attData.staff[i]=v;
+    Object.keys(attData.days).forEach(dt=>{const rec=attData.days[dt];if(rec[old]){rec[v]=rec[old];delete rec[old];}}); // keep history linked
+    attData.staff.sort((a,b)=>a.localeCompare(b));await saveAtt();}
+  attEdit=-1;renderStaffMgr();renderRegister();refreshPri();}
+async function amRemoveName(i){const nm=(attData.staff||[])[i];if(!nm)return;
+  if(!await confirmBox('Remove '+nm+'? Their past attendance stays in the register.','Remove'))return;
+  await loadAtt();attData.staff=attData.staff.filter(x=>x!==nm);await saveAtt();
+  renderStaffMgr();renderRegister();refreshPri();}
+function renderHolidays(){
+  const box=$('#amHoli');const hs=(attData.holidays||[]).slice().sort();
+  if(!hs.length){box.innerHTML='<div class="hint" style="margin:0">No holidays added yet.</div>';return;}
+  box.innerHTML=hs.map(d=>`<span class="holchip">${pretty(d)}<button data-del="${d}" title="Remove">×</button></span>`).join('');
+  box.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
+    await loadAtt();attData.holidays=attData.holidays.filter(x=>x!==b.dataset.del);await saveAtt();
+    renderHolidays();renderRegister();refreshPri();});
+}
+async function amAddHoliday(){const d=$('#amHoliDate').value;if(!d)return;
+  await loadAtt();attData.holidays=attData.holidays||[];if(attData.holidays.indexOf(d)<0)attData.holidays.push(d);
+  await saveAtt();$('#amHoliDate').value='';renderHolidays();renderRegister();refreshPri();toast('Holiday added');}
+function renderFilterOut(){
+  const out=$('#amFilterOut');const dt=attFDay;const rec=(attData.days&&attData.days[dt])||{};
+  const hits=[];(attData.staff||[]).forEach(n=>{const m=rec[n];if(!m||m.status==='A')return;const lt=locOf(m);
+    if(attFLoc!=='*'&&lt!==attFLoc)return;hits.push({n,st:m.status,lt});});
+  const flag=isHolidayStr(dt)?' <span class="loc-tag" style="color:#7b45c7;background:#f2ecfb;border-color:#e0cff5">Govt holiday</span>':(isWeekendStr(dt)?' <span class="loc-tag" style="color:var(--blue);background:#eef2fb;border-color:#d6e2f5">Weekend</span>':'');
+  const where=attFLoc==='*'?'Everyone present':('Worked at <b>'+(LOC_NAME[attFLoc]||attFLoc)+'</b>');
+  const title=`<div style="font-size:13px;color:var(--muted);margin-bottom:8px">${where} on ${pretty(dt)}${flag} — <b>${hits.length}</b></div>`;
+  if(!hits.length){out.innerHTML=title+'<div class="empty" style="padding:14px">No one marked here on this day.</div>';return;}
+  out.innerHTML=title+hits.map(x=>`<div class="att-res"><span class="nm">${esc(x.n)}</span>${attFLoc==='*'?`<span class="att-loc">${esc(LOC_NAME[x.lt]||'')}</span>`:''}<span class="att-pill ${x.st}">${x.st==='P'?'Present':'Half day'}</span></div>`).join('');
+}
+function renderRegister(){
+  const box=$('#amReg');const names=(attData.staff||[]).slice().sort((a,b)=>a.localeCompare(b));
+  if(!names.length){box.innerHTML='<div class="empty" style="padding:16px">Add staff to see the register.</div>';return;}
+  const [Y,M]=attMonth.split('-').map(Number);const dim=new Date(Y,M,0).getDate();
+  const today=todayStr();const isCur=attMonth===today.slice(0,7);const isPast=attMonth<today.slice(0,7);
+  const last=isCur?Number(today.slice(8,10)):(isPast?dim:0);
+  if(last<1){box.innerHTML='<div class="empty" style="padding:16px">This month hasn\'t started yet.</div>';return;}
+  const dows=['Su','Mo','Tu','We','Th','Fr','Sa'];
+  const cols=[];for(let d=1;d<=last;d++)cols.push(attMonth+'-'+String(d).padStart(2,'0'));
+  const operated={};cols.forEach(dt=>{const rec=attData.days[dt]||{};operated[dt]=names.some(n=>rec[n]&&(rec[n].status==='P'||rec[n].status==='H'));});
+  let head='<tr><th class="l" style="position:sticky;left:0;background:#f7f8fb;z-index:2">Staff</th>';
+  cols.forEach(dt=>{const d=Number(dt.slice(8,10));const hol=isHolidayStr(dt),wk=isWeekendStr(dt);const cls=hol?'holi':(wk?'wknd':'');
+    head+=`<th class="${cls}" title="${pretty(dt)}">${d}<span class="dow">${hol?'Hol':dows[new Date(dt+'T00:00:00').getDay()]}</span></th>`;});
+  head+='<th>Present</th><th style="color:var(--red)">Wk+Hol<br>abs</th></tr>';
+  const stLab={P:'P',H:'H',A:'A'};
+  const rows=names.map(nm=>{let pd=0,wha=0;
+    const cells=cols.map(dt=>{const rec=attData.days[dt]||{};const m=rec[nm];const st=m&&m.status;const flag=isHolidayStr(dt)||isWeekendStr(dt);
+      const tdcls=isHolidayStr(dt)?'holi':(isWeekendStr(dt)?'wknd':'');
+      let cls='att-o',lab='·';if(st==='P'){cls='att-p';lab='P';pd+=1;}else if(st==='H'){cls='att-h';lab='H';pd+=0.5;}else if(st==='A'){cls='att-a';lab='A';}
+      const absent=(st==='A'||!st);const ring=(absent&&flag&&operated[dt]);if(ring)wha++;
+      const loc=(st==='P'||st==='H')?locOf(m):'';
+      return `<td class="c ${tdcls}" data-n="${esc(nm)}" data-d="${dt}"><span class="attcell ${cls}${ring?' ringA':''}">${lab}</span>${loc?`<span class="dow" style="color:var(--muted)">${esc(loc)}</span>`:''}</td>`;}).join('');
+    return `<tr><td class="l" style="position:sticky;left:0;background:#fff;font-weight:700;box-shadow:1px 0 0 var(--line)">${esc(nm)}</td>${cells}<td class="n" style="font-weight:800;color:var(--green)">${pd}</td><td class="n" style="font-weight:800;color:var(--red)">${wha||'—'}</td></tr>`;}).join('');
+  box.innerHTML=`<div class="scrollbox att-reg" style="max-height:none"><table class="tbl" style="margin:0;font-size:12px">${head}${rows}</table></div>`;
+  box.querySelectorAll('td.c').forEach(td=>td.onclick=()=>amCycle(td.dataset.n,td.dataset.d));
+}
+async function amCycle(nm,dt){
+  await loadAtt();const rec=attData.days[dt]=attData.days[dt]||{};const cur=rec[nm]&&rec[nm].status;
+  const next={undefined:'P','':'P',P:'H',H:'A',A:null}[cur===undefined?'undefined':cur];
+  if(next===null){delete rec[nm];}
+  else{const prevArea=rec[nm]&&rec[nm].area;rec[nm]={status:next,counter:(rec[nm]&&rec[nm].counter)||'yercaud',area:(next!=='A'?(prevArea||'C'):''),time:(rec[nm]&&rec[nm].time)||'',by:(rec[nm]&&rec[nm].by)||'admin'};}
+  await saveAtt();renderRegister();renderFilterOut();refreshPri();
+}
 
 /* ---------- admin price editor ---------- */
 let priceShop='yercaud',priceItems=[],pricePhotos=[];
